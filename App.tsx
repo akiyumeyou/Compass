@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AppState, Screen, ChatMessage } from './types';
 import PhoneFrame from './components/PhoneFrame';
 import UploadScreen from './components/UploadScreen';
@@ -13,6 +13,14 @@ const App: React.FC = () => {
   const [childhoodPhoto, setChildhoodPhoto] = useState<string | null>(null);
   const [convertedPhoto, setConvertedPhoto] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+
+  // 起動時に自動再生フラグを必ず無効化
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem('autoPlayAfterReply');
+      window.localStorage.removeItem('playOnAnswer');
+    } catch {}
+  }, []);
 
   const handlePhotoUpload = useCallback((photoDataUrl: string) => {
     setChildhoodPhoto(photoDataUrl);
@@ -37,6 +45,11 @@ const App: React.FC = () => {
 
   const handleFirstChatComplete = useCallback((history: ChatMessage[]) => {
     setChatHistory(history);
+    // 着信画面に入る前に自動再生系フラグをクリアしておく
+    try {
+      window.localStorage.removeItem('autoPlayAfterReply');
+      window.localStorage.removeItem('playOnAnswer');
+    } catch {}
     setAppState({ screen: Screen.INCOMING_CALL });
   }, []);
 

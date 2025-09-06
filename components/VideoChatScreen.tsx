@@ -16,6 +16,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const [isLoading, setIsLoading] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoSrc = `${import.meta.env.BASE_URL}child_result.mp4`;
 
   // 通話時間のカウンター
   useEffect(() => {
@@ -24,6 +27,20 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     }, 1000);
 
     return () => clearInterval(timer);
+  }, []);
+
+  // 応答前はAI応答時自動再生を無効化。応答後(playOnAnswer)のみ初回自動再生
+  useEffect(() => {
+    try {
+      const shouldPlay = window.localStorage.getItem('playOnAnswer') === 'true';
+      if (shouldPlay) {
+        setVideoError(null);
+        setIsVideoOpen(true);
+        window.localStorage.removeItem('playOnAnswer');
+      } else {
+        window.localStorage.removeItem('autoPlayAfterReply');
+      }
+    } catch {}
   }, []);
 
   // 通話時間のフォーマット
@@ -52,6 +69,18 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 - 「夢は叶った？」
 
 会話は既に始まっているので、自然に継続してください。`;
+
+  // 初回マウント時に、着信応答ボタンで指定されたフラグがあれば自動再生
+  useEffect(() => {
+    try {
+      const shouldPlay = window.localStorage.getItem('playOnAnswer') === 'true';
+      if (shouldPlay) {
+        setVideoError(null);
+        setIsVideoOpen(true);
+        window.localStorage.removeItem('playOnAnswer');
+      }
+    } catch {}
+  }, []);
 
   // メッセージ送信処理
   const handleSendMessage = async () => {
@@ -104,6 +133,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           text: responseText
         };
         setMessages(prev => [...prev, aiMessage]);
+        // 着信後のみ自動再生
+        try {
+          const enabled = window.localStorage.getItem('autoPlayAfterReply') === 'true';
+          if (enabled) {
+            setVideoError(null);
+            setIsVideoOpen(true);
+          }
+        } catch {}
       } else {
         // 本番環境
         const conversationHistory = messages.map(msg => ({
@@ -132,6 +169,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           text: data.response
         };
         setMessages(prev => [...prev, aiMessage]);
+        // 着信後のみ自動再生
+        try {
+          const enabled = window.localStorage.getItem('autoPlayAfterReply') === 'true';
+          if (enabled) {
+            setVideoError(null);
+            setIsVideoOpen(true);
+          }
+        } catch {}
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -171,12 +216,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
               <div className="text-white text-lg font-light">幼い頃のあなた</div>
               <div className="text-white/70 text-sm">{formatTime(elapsedTime)}</div>
             </div>
-            <button
-              onClick={onEndCall}
-              className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors"
-            >
-              <PhoneOff className="text-white" size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onEndCall}
+                className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors"
+              >
+                <PhoneOff className="text-white" size={20} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -239,6 +286,43 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           </div>
         </div>
       </div>
+
+      {/* 動画モーダル */}
+      {isVideoOpen && (
+        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-[28rem] rounded-xl overflow-hidden bg-black">
+            <button
+              onClick={() => setIsVideoOpen(false)}
+              className="absolute top-2 right-2 z-10 px-3 py-1 rounded-full bg-white/20 text-white text-sm hover:bg-white/30"
+            >
+              閉じる
+            </button>
+            <div className="w-full">
+              {!videoError ? (
+                <video
+                  src={videoSrc}
+                  controls
+                  autoPlay
+                  className="w-full h-auto"
+                  onPlay={() => { try { window.localStorage.setItem('autoPlayAfterReply', 'true'); } catch {} }}
+                  onError={() => setVideoError('動画を読み込めませんでした。/public/child_result.mp4 を確認してください。')}
+                />
+              ) : (
+                <div className="p-6 text-center text-white">
+                  <p className="mb-4">{videoError}</p>
+                  <button
+                    onClick={() => { setVideoError(null); }}
+                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                  >
+                    再試行
+                  </button>
+                </div>
+              )}
+              
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -81,9 +81,12 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ photo, o
             <PhoneOff className="text-white" size={28} />
           </button>
 
-          {/* ビデオボタン（応答） */}
+          {/* ビデオボタン（応答: 次画面で動画再生 → 以後の応答時も自動再生） */}
           <button
-            onClick={onAnswer}
+            onClick={() => {
+              try { window.localStorage.setItem('playOnAnswer', 'true'); } catch {}
+              onAnswer();
+            }}
             className="w-16 h-16 rounded-full bg-white bg-opacity-20 backdrop-blur-md flex items-center justify-center hover:bg-opacity-30 transition-all transform hover:scale-110"
           >
             <Video className="text-white" size={24} />

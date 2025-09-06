@@ -23,6 +23,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
+  const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoSrc = `${import.meta.env.BASE_URL}child_result.mp4`;
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
@@ -135,6 +138,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     if (initRef.current) return;
     initRef.current = true;
     
+    // 応答ボタンを押すまではAI応答時の自動再生を無効
+    try {
+      if (window.localStorage.getItem('playOnAnswer') !== 'true') {
+        window.localStorage.removeItem('autoPlayAfterReply');
+      }
+    } catch {}
+
     const initializeChat = async () => {
       setIsLoading(true);
       
@@ -181,6 +191,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           const aiMessageId = `ai-${Date.now()}`;
           console.log('Setting initial message to state:', { id: aiMessageId, sender: MessageSender.AI, text: responseText });
           setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+          // 着信後のみ自動再生
+          try {
+            const enabled = window.localStorage.getItem('autoPlayAfterReply') === 'true';
+            if (enabled) {
+              setVideoError(null);
+              setIsVideoOpen(true);
+            }
+          } catch {}
           setIsLoading(false);
         } else {
           // 本番環境: APIエンドポイント経由
@@ -215,6 +233,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           const aiMessageId = `ai-${Date.now()}`;
           console.log('Setting initial message to state (production):', { id: aiMessageId, sender: MessageSender.AI, text: data.response });
           setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+          // 着信後のみ自動再生
+          try {
+            const enabled = window.localStorage.getItem('autoPlayAfterReply') === 'true';
+            if (enabled) {
+              setVideoError(null);
+              setIsVideoOpen(true);
+            }
+          } catch {}
           setIsLoading(false);
         }
 
@@ -355,6 +381,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       };
       
       setMessages(prev => [...prev, messageData]);
+      // 着信後のみ自動再生（ただし、最初にカメラ押下で再生されるまで無効）
+      try {
+        const enabled = window.localStorage.getItem('autoPlayAfterReply') === 'true';
+        if (enabled) {
+          setVideoError(null);
+          setIsVideoOpen(true);
+        }
+      } catch {}
 
     } catch (error) {
       console.error("Error sending message:", error);
@@ -380,6 +414,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           <p className="font-bold text-white">幼い頃のあなた</p>
           <p className="text-xs text-green-400">オンライン</p>
         </div>
+        {/* 再生ボタン削除 */}
       </div>
 
       {/* Chat Area */}
@@ -444,6 +479,41 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         </form>
          <button onClick={onEndCall} className="w-full text-center text-red-500 text-sm mt-3 hover:text-red-400">通話を終了</button>
       </div>
+
+      {/* 動画モーダル */}
+      {isVideoOpen && (
+        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-[28rem] rounded-xl overflow-hidden bg-black">
+            <button
+              onClick={() => setIsVideoOpen(false)}
+              className="absolute top-2 right-2 z-10 px-3 py-1 rounded-full bg-white/20 text-white text-sm hover:bg-white/30"
+            >
+              閉じる
+            </button>
+            <div className="w-full">
+              {!videoError ? (
+                <video
+                  src={videoSrc}
+                  controls
+                  autoPlay
+                  className="w-full h-auto"
+                  onError={() => setVideoError('動画を読み込めませんでした。/public/child_result.mp4 を確認してください。')}
+                />
+              ) : (
+                <div className="p-6 text-center text-white">
+                  <p className="mb-4">{videoError}</p>
+                  <button
+                    onClick={() => { setVideoError(null); }}
+                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                  >
+                    再試行
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

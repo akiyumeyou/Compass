@@ -8,6 +8,9 @@ interface ConnectingScreenProps {
 
 const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConverted, photo }) => {
   const [status, setStatus] = useState<'connecting' | 'converting' | 'done' | 'error'>('connecting');
+  const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoSrc = `${import.meta.env.BASE_URL}child_result.mp4`;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,8 +125,44 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
           </div>
         </div>
       )}
+      {/* 再生ボタン削除 */}
       <h2 className="text-2xl font-bold mb-2 animate-pulse">{status === 'converting' ? '現在過去にタイムスリップしています...' : '過去に接続中...'}</h2>
       <p className="text-gray-400">{status === 'converting' ? 'しばらくお待ちください。' : '時間リンクを確立しています。しばらくお待ちください。'}</p>
+
+      {/* 動画モーダル */}
+      {isVideoOpen && (
+        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-[28rem] rounded-xl overflow-hidden bg-black">
+            <button
+              onClick={() => setIsVideoOpen(false)}
+              className="absolute top-2 right-2 z-10 px-3 py-1 rounded-full bg-white/20 text-white text-sm hover:bg-white/30"
+            >
+              閉じる
+            </button>
+            <div className="w-full">
+              {!videoError ? (
+                <video
+                  src={videoSrc}
+                  controls
+                  autoPlay
+                  className="w-full h-auto"
+                  onError={() => setVideoError('動画を読み込めませんでした。/public/child_result.mp4 を確認してください。')}
+                />
+              ) : (
+                <div className="p-6 text-center text-white">
+                  <p className="mb-4">{videoError}</p>
+                  <button
+                    onClick={() => { setVideoError(null); }}
+                    className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                  >
+                    再試行
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
