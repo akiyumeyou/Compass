@@ -1,17 +1,6 @@
 #!/usr/bin/env sh
 
-echo "📝 Gitへのpush前にシステム仕様書を生成しています..."
-
-# システム仕様書を生成
-npm run generate-spec
-
-# 生成されたファイルをgitに追加
-git add docs/system-specs/
-
-# 変更がある場合はコミット
-if ! git diff --cached --quiet docs/system-specs/; then
-  echo "📚 システム仕様書を更新しています..."
-  git commit -m "docs: システム仕様書を自動更新 [skip ci]"
-fi
-
-echo "✅ システム仕様書の生成が完了しました"
+# システム仕様書の生成は継続しますが、Git管理はしません
+# echo "📝 システム仕様書を生成中（ローカル保存のみ）..."
+# npm run generate-spec > /dev/null 2>&1
+# echo "✅ システム仕様書の生成が完了しました（ローカル保存のみ）"
