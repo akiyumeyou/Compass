@@ -42,6 +42,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('API Key exists:', !!apiKey);
     console.log('API Key length:', apiKey?.length || 0);
     console.log('All environment variables:', Object.keys(process.env).sort());
+    console.log('OPENAI_API_KEY value (first 10 chars):', apiKey?.substring(0, 10) + '...');
+    console.log('Environment check:', {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV
+    });
     
     if (!apiKey) {
       console.error('API key not found in environment variables');
