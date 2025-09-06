@@ -57,17 +57,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
         } else {
           // 本番環境: APIエンドポイント経由
+          console.log('Production mode: Using API endpoint');
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
           });
 
+          console.log('API response status:', response.status);
+          console.log('API response headers:', Object.fromEntries(response.headers.entries()));
+
           if (!response.ok) {
-            throw new Error('API request failed');
+            const errorData = await response.json().catch(() => ({}));
+            console.error('API error response:', errorData);
+            throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
           }
 
           const data = await response.json();
+          console.log('API response data:', data);
           const aiMessageId = `ai-${Date.now()}`;
           setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
         }
@@ -140,17 +147,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
         setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
       } else {
         // 本番環境: APIエンドポイント経由
+        console.log('Production mode: Sending message to API endpoint');
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: userMessage.text })
         });
 
+        console.log('API response status:', response.status);
+
         if (!response.ok) {
-          throw new Error('API request failed');
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API error response:', errorData);
+          throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
         }
 
         const data = await response.json();
+        console.log('API response data:', data);
         const aiMessageId = `ai-${Date.now()}`;
         setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
       }
