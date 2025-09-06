@@ -13,12 +13,14 @@ import { getRandomInitialMessage } from '../utils/initialMessages';
 interface ChatScreenProps {
   photo: string;
   onEndCall: () => void;
+  onFirstChatComplete?: (history: ChatMessage[]) => void; // 1ターン完了時のコールバック
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [hasUserReplied, setHasUserReplied] = useState(false); // 1ターン管理用
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
 
@@ -41,21 +43,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 - 返答は短く、会話調で、簡単な言葉を使う
 - 時々子供らしい驚きや表現を加える
 - 絶対にキャラクターを崩さない
-- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める`;
+- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
+- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
+
+  // 1ターン完了後の遷移処理
+  useEffect(() => {
+    // AIの初回メッセージ + ユーザーの返信がある場合、着信画面へ遷移
+    if (messages.length >= 2 && hasUserReplied && onFirstChatComplete) {
+      const timer = setTimeout(() => {
+        onFirstChatComplete(messages);
+      }, 1000); // 1秒後に遷移
+      return () => clearTimeout(timer);
+    }
+  }, [messages, hasUserReplied, onFirstChatComplete]);
 
   useEffect(() => {
     // 既に初期化済みの場合はスキップ（React StrictMode対策）
     if (initRef.current) return;
     initRef.current = true;
     
-    let cancelled = false;
-    
-    async function initializeChat() {
-      if (cancelled) return;
+    const initializeChat = async () => {
+      setIsLoading(true);
       
       try {
-        setIsLoading(true);
-        
         // 開発環境かどうかを判定
         const isDevelopment = import.meta.env.DEV;
         
@@ -88,7 +98,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
                 content: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage 
               }
             ],
-            max_tokens: 150,
+            max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
             temperature: 0.7  // 少し低めの温度で一貫性を保つ
           });
           
@@ -96,9 +106,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           console.log('Initial greeting from childhood self:', responseText);
           
           const aiMessageId = `ai-${Date.now()}`;
-          if (!cancelled) {
-            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
-          }
+          console.log('Setting initial message to state:', { id: aiMessageId, sender: MessageSender.AI, text: responseText });
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+          setIsLoading(false);
         } else {
           // 本番環境: APIエンドポイント経由
           console.log('Production mode: Using API endpoint');
@@ -130,9 +140,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           const data = await response.json();
           console.log('API response data:', data);
           const aiMessageId = `ai-${Date.now()}`;
-          if (!cancelled) {
-            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
-          }
+          console.log('Setting initial message to state (production):', { id: aiMessageId, sender: MessageSender.AI, text: data.response });
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+          setIsLoading(false);
         }
 
       } catch (error) {
@@ -142,26 +152,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           stack: error instanceof Error ? error.stack : 'No stack trace',
           name: error instanceof Error ? error.name : 'Unknown error type'
         });
-        if (!cancelled) {
-          setMessages([{ 
-            id: 'error-1', 
-            sender: MessageSender.AI, 
-            text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          }]);
-        }
-      } finally {
+        setMessages([{ 
+          id: 'error-1', 
+          sender: MessageSender.AI, 
+          text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        }]);
         setIsLoading(false);
       }
-    }
-    initializeChat();
-    
-    // クリーンアップ関数
-    return () => {
-      cancelled = true;
     };
+    
+    initializeChat();
   }, []);
 
   useEffect(() => {
+    console.log('Messages state updated:', messages);
+    console.log('Messages count:', messages.length);
     chatContainerRef.current?.scrollTo({
       top: chatContainerRef.current.scrollHeight,
       behavior: 'smooth'
@@ -171,6 +176,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim() || isLoading) return;
+
+    // ユーザーが返信したことを記録
+    if (!hasUserReplied) {
+      setHasUserReplied(true);
+    }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -221,7 +231,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
             { role: 'system', content: systemInstruction + '\n\n' + contextualHint },
             { role: 'user', content: userMessage.text }
           ],
-          max_tokens: 150,
+          max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
           temperature: 0.9
         });
         
@@ -263,8 +273,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [userInput, isLoading]);
+  }, [userInput, isLoading, messages, hasUserReplied]);
 
+  console.log('ChatScreen render - messages:', messages);
+  console.log('ChatScreen render - isLoading:', isLoading);
+  
   return (
     <div className="flex flex-col h-full bg-black bg-opacity-80">
       {/* Header */}
@@ -278,6 +291,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
       {/* Chat Area */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* 初期化中のローディング表示 */}
+        {isLoading && messages.length === 0 && (
+          <div className="flex items-end gap-2 justify-start">
+            <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
+            <div className="bg-gray-700 rounded-2xl rounded-bl-none px-4 py-2">
+              <div className="flex items-center space-x-1">
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce"></span>
+              </div>
+            </div>
+          </div>
+        )}
         {messages.map((msg) => (
           <div key={msg.id} className={`flex items-end gap-2 ${msg.sender === MessageSender.USER ? 'justify-end' : 'justify-start'}`}>
             {msg.sender === MessageSender.AI && <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />}
