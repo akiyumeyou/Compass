@@ -11,7 +11,6 @@ import {
 import { getRandomInitialMessage } from '../utils/initialMessages';
 import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, UdemyCourse } from '../udemyCatalog';
 import RealtimeCall from './RealtimeCall';
-import OpenAI from 'openai';
 
 interface ChatScreenProps {
   photo: string;
@@ -372,86 +371,39 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
             
             const aiMessageId = `ai-${Date.now()}`;
             setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
-          } else {
-            const openai = new OpenAI({ 
-              apiKey: apiKey,
-              dangerouslyAllowBrowser: true
-            });
-
-          console.log('Selecting random initial message...');
-          
-          // ランダムな初回メッセージを選択
-          const randomInitialMessage = getRandomInitialMessage();
-          
-          // GPT-4にランダムメッセージを少しパーソナライズさせる（オプション）
-          const response = await openai.chat.completions.create({
-            model: 'gpt-4',
-            messages: [
-              { 
-                role: 'system', 
-                content: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage 
-              }
-            ],
-            max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
-            temperature: 0.7  // 少し低めの温度で一貫性を保つ
-          });
-          
-          const responseText = response.choices[0]?.message?.content || randomInitialMessage;
-          console.log('Initial greeting from childhood self:', responseText);
-          
-            const aiMessageId = `ai-${Date.now()}`;
-            console.log('Setting initial message to state:', { id: aiMessageId, sender: MessageSender.AI, text: responseText });
-            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
-            setIsLoading(false);
           }
         } else {
-          // 本番環境: APIエンドポイント経由
-          console.log('Production mode: Using API endpoint');
-          console.log('Current URL:', window.location.href);
-          console.log('API endpoint URL:', '/api/chat');
-          
-          // ランダムな初回メッセージを選択
-          const randomInitialMessage = getRandomInitialMessage();
-          
+          // 本番環境: Vercelサーバーレス関数経由
+          console.log('Production mode: Using Vercel API');
           const response = await fetch('/api/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: "", 
-              isInitial: true,
-              systemPrompt: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage
-            })
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: "こんにちは！大人になった私と話したい！",
+              systemInstruction: systemInstruction
+            }),
           });
 
-          console.log('API response status:', response.status);
-          console.log('API response headers:', Object.fromEntries(response.headers.entries()));
-
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error('API error response:', errorData);
-            throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           const data = await response.json();
-          console.log('API response data:', data);
+          const responseText = data.message || 'すみません、うまく聞こえませんでした。';
+          console.log('API response:', responseText);
+          
           const aiMessageId = `ai-${Date.now()}`;
-          console.log('Setting initial message to state (production):', { id: aiMessageId, sender: MessageSender.AI, text: data.response });
-          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
-          setIsLoading(false);
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
         }
-
+        
+        setIsLoading(false);
       } catch (error) {
-        console.error("Chat initialization failed:", error);
-        console.error("Error details:", {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : 'No stack trace',
-          name: error instanceof Error ? error.name : 'Unknown error type'
-        });
-        setMessages([{ 
-          id: 'error-1', 
-          sender: MessageSender.AI, 
-          text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
-        }]);
+        console.error('Error initializing chat:', error);
+        const errorMessage = "すみません、うまく話しかけられませんでした。もう一度試してみてね！";
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: errorMessage }]);
         setIsLoading(false);
       }
     };
