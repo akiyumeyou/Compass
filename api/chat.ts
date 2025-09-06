@@ -9,13 +9,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { message } = req.body;
     
-    const apiKey = process.env.VITE_OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
       console.error('API key not found in environment variables');
       return res.status(500).json({ 
         error: 'API key not configured',
-        debug: 'Environment variable VITE_OPENAI_API_KEY is missing'
+        debug: 'Environment variable OPENAI_API_KEY is missing'
       });
     }
 
