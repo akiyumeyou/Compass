@@ -20,7 +20,7 @@ npm run preview
 
 ## 必須環境変数
 `.env.local`ファイルに以下を設定:
-- `GEMINI_API_KEY`: Google Gemini APIキー
+- `VITE_OPENAI_API_KEY`: OpenAI APIキー
 
 ## アーキテクチャ
 
@@ -31,14 +31,14 @@ UPLOAD (写真アップロード) → CONNECTING (接続中) → CHAT (ビデオ
 
 ### 主要コンポーネント構造
 - **App.tsx**: 画面遷移の状態管理、写真データの保持
-- **ChatScreen.tsx**: Gemini AIとのチャット機能実装
-  - Google Gemini API (`gemini-2.5-flash`モデル)を使用
-  - ストリーミングレスポンス対応
+- **ChatScreen.tsx**: OpenAI GPT-4とのチャット機能実装
+  - OpenAI API (`gpt-4`モデル)を使用
   - 子供の視点で会話するシステムプロンプト設定
+  - 開発環境では直接API呼び出し、本番環境では/api/chat経由
 
 ### API統合
-- Vite設定で`process.env.API_KEY`と`process.env.GEMINI_API_KEY`の両方を定義
-- ChatScreenでGoogle Genaiライブラリ使用してチャット実装
+- 開発環境: 直接OpenAI APIを呼び出し
+- 本番環境: Vercelサーバーレス関数(/api/chat)経由
 
 ### スタイリング
 Tailwind CSSクラスを直接使用（設定ファイルなし、CDN経由）

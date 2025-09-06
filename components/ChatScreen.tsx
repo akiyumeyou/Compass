@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
 
@@ -20,25 +20,57 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     async function initializeChat() {
       try {
         setIsLoading(true);
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         
-        if (!apiKey) {
-          throw new Error('API key not found');
+        // 開発環境かどうかを判定
+        const isDevelopment = import.meta.env.DEV;
+        
+        if (isDevelopment) {
+          // 開発環境: 直接OpenAI APIを呼び出し
+          console.log('Development mode: Using direct OpenAI API');
+          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+          console.log('API Key exists:', !!apiKey);
+          
+          if (!apiKey) {
+            throw new Error('API key not found');
+          }
+
+          const openai = new OpenAI({ 
+            apiKey: apiKey,
+            dangerouslyAllowBrowser: true
+          });
+
+          console.log('Sending initialization message to OpenAI...');
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [
+              { role: 'system', content: systemInstruction },
+              { role: 'user', content: "こんにちは！大人になった私と話したい！" }
+            ],
+            max_tokens: 150,
+            temperature: 0.9
+          });
+          
+          const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
+          console.log('OpenAI response:', responseText);
+          
+          const aiMessageId = `ai-${Date.now()}`;
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+        } else {
+          // 本番環境: APIエンドポイント経由
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
+          });
+
+          if (!response.ok) {
+            throw new Error('API request failed');
+          }
+
+          const data = await response.json();
+          const aiMessageId = `ai-${Date.now()}`;
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
         }
-
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash',
-          systemInstruction: systemInstruction
-        });
-
-        const chat = model.startChat({ history: [] });
-        const result = await chat.sendMessage("こんにちは！大人になった私と話したい！");
-        const response = result.response;
-        const responseText = response.text();
-        
-        const aiMessageId = `ai-${Date.now()}`;
-        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
 
       } catch (error) {
         console.error("Chat initialization failed:", error);
@@ -75,25 +107,53 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      // 開発環境かどうかを判定
+      const isDevelopment = import.meta.env.DEV;
       
-      if (!apiKey) {
-        throw new Error('API key not found');
+      if (isDevelopment) {
+        // 開発環境: 直接OpenAI APIを呼び出し
+        console.log('Sending user message to OpenAI:', userMessage.text);
+        const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error('API key not found');
+        }
+
+        const openai = new OpenAI({ 
+          apiKey: apiKey,
+          dangerouslyAllowBrowser: true
+        });
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userMessage.text }
+          ],
+          max_tokens: 150,
+          temperature: 0.9
+        });
+        
+        const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
+        console.log('OpenAI response to user message:', responseText);
+        
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+      } else {
+        // 本番環境: APIエンドポイント経由
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMessage.text })
+        });
+
+        if (!response.ok) {
+          throw new Error('API request failed');
+        }
+
+        const data = await response.json();
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
       }
-
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
-        systemInstruction: systemInstruction
-      });
-
-      const chat = model.startChat({ history: [] });
-      const result = await chat.sendMessage(userMessage.text);
-      const response = result.response;
-      const responseText = response.text();
-      
-      const aiMessageId = `ai-${Date.now()}`;
-      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
 
     } catch (error) {
       console.error("Error sending message:", error);
