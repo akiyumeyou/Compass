@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenerativeAI, ChatSession } from "@google/generative-ai";
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
 
@@ -12,7 +11,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const chatRef = useRef<ChatSession | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`;
@@ -20,46 +18,35 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   useEffect(() => {
     async function initializeChat() {
       try {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
-        if (!apiKey || apiKey === 'your-api-key-here') {
-          throw new Error('Gemini API key is not configured');
-        }
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash-8b',
-          systemInstruction 
-        });
-        
-        chatRef.current = model.startChat({
-          history: [],
-        });
-
         // Start the conversation with the AI's first message
         setIsLoading(true);
-        const result = await chatRef.current.sendMessageStream("こんにちは！大人になった私と話したい！");
         
-        let text = '';
-        const aiMessageId = `ai-${Date.now()}`;
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
+        });
 
-        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: '' }]);
-
-        for await (const chunk of result.stream) {
-          text += chunk.text();
-          setMessages(prev => prev.map(msg => msg.id === aiMessageId ? { ...msg, text } : msg));
+        if (!response.ok) {
+          throw new Error('API request failed');
         }
 
+        const data = await response.json();
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+
       } catch (error) {
-        console.error("Gemini API initialization failed:", error);
-        const errorMessage = error instanceof Error && error.message.includes('not configured') 
-          ? "API キーが設定されていないよ！.env.localファイルにGEMINI_API_KEYを設定してね！"
-          : "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？";
-        setMessages([{ id: 'error-1', sender: MessageSender.AI, text: errorMessage }]);
+        console.error("Chat initialization failed:", error);
+        setMessages([{ 
+          id: 'error-1', 
+          sender: MessageSender.AI, 
+          text: "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？" 
+        }]);
       } finally {
         setIsLoading(false);
       }
     }
     initializeChat();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -71,7 +58,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
   const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || isLoading || !chatRef.current) return;
+    if (!userInput.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -83,22 +70,27 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
-      const result = await chatRef.current.sendMessageStream(userMessage.text);
-      
-      let text = '';
-      const aiMessageId = `ai-${Date.now()}`;
-      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: '' }]);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage.text })
+      });
 
-      for await (const chunk of result.stream) {
-        text += chunk.text();
-        setMessages(prev => {
-          return prev.map(msg => msg.id === aiMessageId ? { ...msg, text } : msg)
-        });
+      if (!response.ok) {
+        throw new Error('API request failed');
       }
+
+      const data = await response.json();
+      const aiMessageId = `ai-${Date.now()}`;
+      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
 
     } catch (error) {
       console.error("Error sending message:", error);
-      setMessages(prev => [...prev, { id: 'error-2', sender: MessageSender.AI, text: "頭がちょっとぼーっとする…よくわからなかった。" }]);
+      setMessages(prev => [...prev, { 
+        id: 'error-2', 
+        sender: MessageSender.AI, 
+        text: "頭がちょっとぼーっとする…よくわからなかった。" 
+      }]);
     } finally {
       setIsLoading(false);
     }
