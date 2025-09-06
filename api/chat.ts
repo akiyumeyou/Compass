@@ -35,8 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { message } = req.body;
+    const { message, isInitial, systemPrompt } = req.body;
     console.log('Message received:', message);
+    console.log('Is initial message:', isInitial);
     
     const apiKey = process.env.OPENAI_API_KEY;
     console.log('API Key exists:', !!apiKey);
@@ -62,16 +63,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const openai = getOpenAIClient();
 
-    const systemMessage = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`;
+    const defaultSystemMessage = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。
+
+重要: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせること。`;
+    
+    const systemMessage = systemPrompt || defaultSystemMessage;
 
     console.log('Calling OpenAI API...');
+    
+    // 初期メッセージの場合は、システムプロンプトのみで生成
+    const messages = isInitial 
+      ? [{ role: 'system' as const, content: systemMessage }]
+      : [
+          { role: 'system' as const, content: systemMessage },
+          { role: 'user' as const, content: message }
+        ];
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
-      messages: [
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: message }
-      ],
-      max_tokens: 150,
+      messages,
+      max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
       temperature: 0.9
     });
 

@@ -2,15 +2,24 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import OpenAI from 'openai';
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
+import { analyzeUserInput, inferPersonalityTraits } from '../utils/emotionAnalyzer';
+import { 
+  selectColdReadingPhrase, 
+  generateEmpatheticResponse,
+  generateInsightfulQuestion 
+} from '../utils/coldReadingPhrases';
+import { getRandomInitialMessage } from '../utils/initialMessages';
 import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, UdemyCourse } from '../udemyCatalog';
 import RealtimeCall from './RealtimeCall';
+import OpenAI from 'openai';
 
 interface ChatScreenProps {
   photo: string;
   onEndCall: () => void;
+  onFirstChatComplete?: (history: ChatMessage[]) => void; // 1ターン完了時のコールバック
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,8 +28,40 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const [isListening, setIsListening] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const initRef = useRef(false);
 
-  const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`;
+  const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
+
+# コールドリーディング技術の使用
+- ユーザーの感情状態を「なんとなく感じる」「わかる気がする」という表現で推測
+- 多くの人が経験する普遍的な悩みや感情を、子供らしい言葉で言及
+- 「きっと〜でしょ？」「〜な気がする」といった曖昧な表現から始めて、反応を見ながら具体化
+- 時々、複数の可能性を投げかけて反応を観察（「お仕事のこと？それとも大切な人のこと？」）
+
+# 会話パターン
+1. 観察的発言：「なんか疲れてる顔してる...」「今日は嬉しそう！」
+2. 共感的推測：「きっと頑張りすぎちゃうタイプでしょ？」「優しすぎて損しちゃうこともあるよね」
+3. 普遍的真実：「大人って、表と裏があって大変そう」「みんな本当は認められたいんだよね」
+4. 洞察的質問：「本当の気持ち、誰かに話せてる？」「子供の頃の夢、まだ心にある？」
+
+# 重要な指針
+- 子供らしい無邪気さを保ちながら、鋭い洞察を示す
+- 返答は短く、会話調で、簡単な言葉を使う
+- 時々子供らしい驚きや表現を加える
+- 絶対にキャラクターを崩さない
+- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
+- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
+
+  // 1.5ターン完了後の遷移処理
+  useEffect(() => {
+    // AI初回メッセージ + ユーザー返信 + AI2回目メッセージ = 3メッセージで着信画面へ遷移
+    if (messages.length >= 3 && onFirstChatComplete) {
+      const timer = setTimeout(() => {
+        onFirstChatComplete(messages);
+      }, 3000); // 3秒後に遷移
+      return () => clearTimeout(timer);
+    }
+  }, [messages, onFirstChatComplete]);
 
 
   // === TEAM MODIFICATION START ===
@@ -286,10 +327,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   }, [adjustTextForChildVoice]);
 
   useEffect(() => {
-    async function initializeChat() {
+    // 既に初期化済みの場合はスキップ（React StrictMode対策）
+    if (initRef.current) return;
+    initRef.current = true;
+    
+    const initializeChat = async () => {
+      setIsLoading(true);
+      
       try {
-        setIsLoading(true);
-        
         // 開発環境かどうかを判定
         const isDevelopment = import.meta.env.DEV;
         
@@ -327,6 +372,37 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
             
             const aiMessageId = `ai-${Date.now()}`;
             setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+          } else {
+            const openai = new OpenAI({ 
+              apiKey: apiKey,
+              dangerouslyAllowBrowser: true
+            });
+
+          console.log('Selecting random initial message...');
+          
+          // ランダムな初回メッセージを選択
+          const randomInitialMessage = getRandomInitialMessage();
+          
+          // GPT-4にランダムメッセージを少しパーソナライズさせる（オプション）
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [
+              { 
+                role: 'system', 
+                content: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage 
+              }
+            ],
+            max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
+            temperature: 0.7  // 少し低めの温度で一貫性を保つ
+          });
+          
+          const responseText = response.choices[0]?.message?.content || randomInitialMessage;
+          console.log('Initial greeting from childhood self:', responseText);
+          
+            const aiMessageId = `ai-${Date.now()}`;
+            console.log('Setting initial message to state:', { id: aiMessageId, sender: MessageSender.AI, text: responseText });
+            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+            setIsLoading(false);
           }
         } else {
           // 本番環境: APIエンドポイント経由
@@ -334,10 +410,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           console.log('Current URL:', window.location.href);
           console.log('API endpoint URL:', '/api/chat');
           
+          // ランダムな初回メッセージを選択
+          const randomInitialMessage = getRandomInitialMessage();
+          
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
+            body: JSON.stringify({ 
+              message: "", 
+              isInitial: true,
+              systemPrompt: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage
+            })
           });
 
           console.log('API response status:', response.status);
@@ -352,7 +435,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           const data = await response.json();
           console.log('API response data:', data);
           const aiMessageId = `ai-${Date.now()}`;
+          console.log('Setting initial message to state (production):', { id: aiMessageId, sender: MessageSender.AI, text: data.response });
           setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+          setIsLoading(false);
         }
 
       } catch (error) {
@@ -367,14 +452,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           sender: MessageSender.AI, 
           text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
         }]);
-      } finally {
         setIsLoading(false);
       }
-    }
+    };
+    
     initializeChat();
   }, []);
 
   useEffect(() => {
+    console.log('Messages state updated:', messages);
+    console.log('Messages count:', messages.length);
     chatContainerRef.current?.scrollTo({
       top: chatContainerRef.current.scrollHeight,
       behavior: 'smooth'
@@ -395,6 +482,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
+      // 感情分析とコールドリーディングの準備
+      const emotionalState = analyzeUserInput(messages);
+      const personalityTraits = inferPersonalityTraits(emotionalState);
+      const coldReadingPhrase = selectColdReadingPhrase(emotionalState);
+      const insightfulQuestion = generateInsightfulQuestion(personalityTraits, emotionalState.concerns);
+      
+      // コンテキスト情報を追加
+      const contextualHint = `
+ユーザーの感情状態: ${emotionalState.mood}
+話題: ${emotionalState.topics.join(', ') || '一般的な会話'}
+推測される性格: ${personalityTraits.slice(0, 2).join(', ')}
+
+次の要素を自然に会話に織り込んでください（子供らしい言葉で）:
+- ${coldReadingPhrase}
+- ${insightfulQuestion}
+`;
+      
       // 開発環境かどうかを判定
       const isDevelopment = import.meta.env.DEV;
       let responseText = '';
@@ -416,10 +520,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
         const response = await openai.chat.completions.create({
           model: 'gpt-4',
           messages: [
-            { role: 'system', content: systemInstruction },
+            { role: 'system', content: systemInstruction + '\n\n' + contextualHint },
             { role: 'user', content: userMessage.text }
           ],
-          max_tokens: 150,
+          max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
           temperature: 0.9
         });
         
@@ -484,8 +588,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [userInput, isLoading]);
+  }, [userInput, isLoading, messages]);
 
+  console.log('ChatScreen render - messages:', messages);
+  console.log('ChatScreen render - isLoading:', isLoading);
+  
   // Realtimeモードの場合は専用コンポーネントを表示
   if (isRealtimeMode) {
     return (
@@ -526,9 +633,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
       </div>
     );
   }
-
   return (
-    <div className="flex flex-col h-full bg-black bg-opacity-80">
+    <div className="absolute inset-0 flex flex-col bg-black bg-opacity-80 rounded-[2rem] overflow-hidden">
       {/* Header */}
       <div className="flex items-center p-3 border-b border-gray-700 bg-gray-900">
         <img src={photo} alt="幼い頃の自分" className="w-10 h-10 rounded-full object-cover" />
@@ -590,6 +696,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
       {/* Chat Area */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* 初期化中のローディング表示 */}
+        {isLoading && messages.length === 0 && (
+          <div className="flex items-end gap-2 justify-start">
+            <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
+            <div className="bg-gray-700 rounded-2xl rounded-bl-none px-4 py-2">
+              <div className="flex items-center space-x-1">
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce"></span>
+              </div>
+            </div>
+          </div>
+        )}
         {messages.map((msg) => (
           <div key={msg.id} className={`flex items-end gap-2 ${msg.sender === MessageSender.USER ? 'justify-end' : 'justify-start'}`}>
             {msg.sender === MessageSender.AI && <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />}

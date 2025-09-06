@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+# ビルドチェックのみ実行（testスクリプトがないため）
+echo "🔨 コミット前のビルドチェック..."
+npm run build

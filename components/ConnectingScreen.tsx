@@ -34,7 +34,16 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
           const mimeType = match[1];
           const base64Data = match[2];
 
-          const prompt = 'この写真を子供のころに変換してください。元の人間の特徴を維持しつつ、7歳くらいの幼い顔立ちにしてください。髪型や服装も年齢に合ったものにし、写実的な上半身のポートレートにしてください。';
+          const prompt = 
+            "Using the provided image, create a photorealistic portrait of this person as a 7-year-old child. " +
+            "Preserve the original person's unique facial features, eye shape, and overall facial structure, " +
+            "but naturally adjusted for a younger age. The result should be instantly recognizable as the same person. " +
+            "Key requirements: " +
+            "- Smooth, youthful skin with rounder cheeks and softer facial contours " +
+            "- Proportionally larger eyes with an innocent, childlike gaze " +
+            "- Simple elementary school outfit (white shirt or Japanese school uniform) " +
+            "- Professional studio portrait style with soft natural lighting " +
+            "- Ultra photorealistic quality, like a real photograph, not an illustration";
 
           const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent', {
             method: 'POST',
@@ -129,7 +138,7 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
   }, [photo, onConverted, onConnected]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-black text-white p-8">
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white p-8 rounded-[2rem] overflow-hidden">
       {photo && (
         <div className="relative mb-8">
           <img src={photo} alt="幼い頃のあなた" className="w-32 h-32 rounded-full object-cover border-4 border-gray-700 shadow-lg"/>

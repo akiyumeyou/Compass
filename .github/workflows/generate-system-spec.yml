@@ -1,0 +1,79 @@
+name: Generate System Specification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  generate-spec:
+    # PRがマージされた時、またはmainブランチへの直接pushの時のみ実行
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Generate system specification
+        run: npm run generate-spec
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/system-specs/
+          if git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git commit -m "docs: 自動生成されたシステム仕様書を更新 [skip ci]
+
+          Generated from commit: ${{ github.sha }}
+          Triggered by: ${{ github.event_name }}
+          Branch: ${{ github.ref_name }}"
+          
+          git push origin main
+      
+      - name: Upload specification as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-specification
+          path: docs/system-specs/latest.md
+          retention-days: 90
+      
+      - name: Summary
+        run: |
+          echo "## 📚 システム仕様書生成完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 📝 最新版: \`docs/system-specs/latest.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 アーカイブ: \`docs/system-specs/archive/\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔗 コミット: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "仕様書はArtifactsからダウンロード可能です。" >> $GITHUB_STEP_SUMMARY
