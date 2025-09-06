@@ -6,7 +6,8 @@ let openaiClient: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
+    // 本番環境とローカル環境の両方に対応
+    const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY environment variable is not set');
     }
@@ -39,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Message received:', message);
     console.log('Is initial message:', isInitial);
     
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
     console.log('API Key exists:', !!apiKey);
     console.log('API Key length:', apiKey?.length || 0);
     console.log('All environment variables:', Object.keys(process.env).sort());

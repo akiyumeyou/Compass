@@ -27,7 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mimeType = match[1];
     const base64Data = match[2];
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    // ローカル環境と本番環境の両方に対応
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
     }
