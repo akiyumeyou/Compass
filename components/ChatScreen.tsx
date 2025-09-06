@@ -8,6 +8,7 @@ import {
   generateEmpatheticResponse,
   generateInsightfulQuestion 
 } from '../utils/coldReadingPhrases';
+import { getRandomInitialMessage } from '../utils/initialMessages';
 
 interface ChatScreenProps {
   photo: string;
@@ -73,17 +74,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
             dangerouslyAllowBrowser: true
           });
 
-          console.log('Generating initial message from childhood self...');
+          console.log('Selecting random initial message...');
+          
+          // ランダムな初回メッセージを選択
+          const randomInitialMessage = getRandomInitialMessage();
+          
+          // GPT-4にランダムメッセージを少しパーソナライズさせる（オプション）
           const response = await openai.chat.completions.create({
             model: 'gpt-4',
             messages: [
-              { role: 'system', content: systemInstruction + '\n\n最初のメッセージを生成してください。大人になった自分を見て驚いた反応から始めてください。' }
+              { 
+                role: 'system', 
+                content: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage 
+              }
             ],
             max_tokens: 150,
-            temperature: 0.9
+            temperature: 0.7  // 少し低めの温度で一貫性を保つ
           });
           
-          const responseText = response.choices[0]?.message?.content || 'わぁ！大きくなった僕だ！すごく...大人っぽい！大人になるってどんな感じ？';
+          const responseText = response.choices[0]?.message?.content || randomInitialMessage;
           console.log('Initial greeting from childhood self:', responseText);
           
           const aiMessageId = `ai-${Date.now()}`;
@@ -96,13 +105,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           console.log('Current URL:', window.location.href);
           console.log('API endpoint URL:', '/api/chat');
           
+          // ランダムな初回メッセージを選択
+          const randomInitialMessage = getRandomInitialMessage();
+          
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               message: "", 
               isInitial: true,
-              systemPrompt: systemInstruction + '\n\n最初のメッセージを生成してください。大人になった自分を見て驚いた反応から始めてください。'
+              systemPrompt: systemInstruction + '\n\n次のメッセージを参考に、同じ感情とトーンを保ちながら、少しだけ自分の言葉で言い換えてください: ' + randomInitialMessage
             })
           });
 
