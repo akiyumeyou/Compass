@@ -30,3 +30,9 @@ secrets/
 *.njsproj
 *.sln
 *.sw?
+
+# Spacstory files
+.spacstory
+
+# Serena files
+.serena

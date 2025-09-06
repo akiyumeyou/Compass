@@ -33,7 +33,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const prompt =
-      "Create a hyper-realistic portrait of the provided adult male, reimagined as himself at about 7–9 years old. The child must be instantly recognizable as the same person: preserve the unique facial structure, eye shape, nose, lips, and overall proportions, only adjusted naturally for a younger age. Key details: - Smooth, youthful skin with no wrinkles or facial hair. - Slightly rounder cheeks, smaller jawline, softer facial contours. - Eye size proportionally larger compared to the face, with a bright and innocent childlike gaze. - Hair should closely resemble the adult's current hairstyle, but shorter and appropriate for a school-aged boy, natural and neat. - Expression: calm, slightly smiling, gentle and curious, typical of a childhood portrait. - Outfit: realistic elementary school clothing, such as a plain white shirt, or a Japanese elementary school uniform (navy blazer, white shirt). - Environment: simple studio portrait with soft natural lighting and a neutral background. - Style: ultra photorealistic, extremely detailed, high-resolution photograph. Lighting and skin texture should look like a real professional portrait photograph, not a painting or illustration.";
+      "Using the provided image, create a photorealistic portrait of this person as a 7-year-old child. " +
+      "Preserve the original person's unique facial features, eye shape, and overall facial structure, " +
+      "but naturally adjusted for a younger age. The result should be instantly recognizable as the same person. " +
+      "Key requirements: " +
+      "- Smooth, youthful skin with rounder cheeks and softer facial contours " +
+      "- Proportionally larger eyes with an innocent, childlike gaze " +
+      "- Simple elementary school outfit (white shirt or Japanese school uniform) " +
+      "- Professional studio portrait style with soft natural lighting " +
+      "- Ultra photorealistic quality, like a real photograph, not an illustration";
 
     const geminiResponse = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent",
