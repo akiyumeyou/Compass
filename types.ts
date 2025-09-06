@@ -21,4 +21,12 @@ export interface ChatMessage {
   id: string;
   sender: MessageSender;
   text: string;
+  // === TEAM MODIFICATION START ===
+  udemyCourse?: {
+    id: string;
+    title: string;
+    url: string;
+    thumbnail?: string;
+  };
+  // === TEAM MODIFICATION END ===
 }
