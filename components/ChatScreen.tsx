@@ -20,9 +20,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   useEffect(() => {
     async function initializeChat() {
       try {
-        const genAI = new GoogleGenerativeAI(process.env.API_KEY as string);
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+        if (!apiKey || apiKey === 'your-api-key-here') {
+          throw new Error('Gemini API key is not configured');
+        }
+        const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash',
+          model: 'gemini-1.5-flash-8b',
           systemInstruction 
         });
         
@@ -46,7 +50,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
       } catch (error) {
         console.error("Gemini API initialization failed:", error);
-        setMessages([{ id: 'error-1', sender: MessageSender.AI, text: "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？" }]);
+        const errorMessage = error instanceof Error && error.message.includes('not configured') 
+          ? "API キーが設定されていないよ！.env.localファイルにGEMINI_API_KEYを設定してね！"
+          : "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？";
+        setMessages([{ id: 'error-1', sender: MessageSender.AI, text: errorMessage }]);
       } finally {
         setIsLoading(false);
       }
