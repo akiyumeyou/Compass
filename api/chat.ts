@@ -9,9 +9,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { message } = req.body;
     
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.VITE_GEMINI_API_KEY;
+    
     if (!apiKey) {
-      throw new Error('API key not configured');
+      console.error('API key not found in environment variables');
+      return res.status(500).json({ 
+        error: 'API key not configured',
+        debug: 'Environment variable VITE_GEMINI_API_KEY is missing'
+      });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
 
@@ -18,22 +19,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   useEffect(() => {
     async function initializeChat() {
       try {
-        // Start the conversation with the AI's first message
         setIsLoading(true);
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
-        });
-
-        if (!response.ok) {
-          throw new Error('API request failed');
+        if (!apiKey) {
+          throw new Error('API key not found');
         }
 
-        const data = await response.json();
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ 
+          model: 'gemini-1.5-flash',
+          systemInstruction: systemInstruction
+        });
+
+        const chat = model.startChat({ history: [] });
+        const result = await chat.sendMessage("こんにちは！大人になった私と話したい！");
+        const response = result.response;
+        const responseText = response.text();
+        
         const aiMessageId = `ai-${Date.now()}`;
-        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
 
       } catch (error) {
         console.error("Chat initialization failed:", error);
@@ -70,19 +75,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage.text })
-      });
-
-      if (!response.ok) {
-        throw new Error('API request failed');
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('API key not found');
       }
 
-      const data = await response.json();
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash',
+        systemInstruction: systemInstruction
+      });
+
+      const chat = model.startChat({ history: [] });
+      const result = await chat.sendMessage(userMessage.text);
+      const response = result.response;
+      const responseText = response.text();
+      
       const aiMessageId = `ai-${Date.now()}`;
-      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
 
     } catch (error) {
       console.error("Error sending message:", error);
