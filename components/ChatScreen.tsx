@@ -58,6 +58,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
         } else {
           // 本番環境: APIエンドポイント経由
           console.log('Production mode: Using API endpoint');
+          console.log('Current URL:', window.location.href);
+          console.log('API endpoint URL:', '/api/chat');
+          
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -81,10 +84,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
       } catch (error) {
         console.error("Chat initialization failed:", error);
+        console.error("Error details:", {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          name: error instanceof Error ? error.name : 'Unknown error type'
+        });
         setMessages([{ 
           id: 'error-1', 
           sender: MessageSender.AI, 
-          text: "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？" 
+          text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
         }]);
       } finally {
         setIsLoading(false);
