@@ -36,3 +36,6 @@ secrets/
 
 # Serena files
 .serena
+
+# System specifications (auto-generated)
+docs/system-specs/
