@@ -19,6 +19,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const initRef = useRef(false);
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
@@ -42,7 +43,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 - 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める`;
 
   useEffect(() => {
+    // 既に初期化済みの場合はスキップ（React StrictMode対策）
+    if (initRef.current) return;
+    initRef.current = true;
+    
+    let cancelled = false;
+    
     async function initializeChat() {
+      if (cancelled) return;
+      
       try {
         setIsLoading(true);
         
@@ -79,7 +88,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           console.log('OpenAI response:', responseText);
           
           const aiMessageId = `ai-${Date.now()}`;
-          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+          if (!cancelled) {
+            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+          }
         } else {
           // 本番環境: APIエンドポイント経由
           console.log('Production mode: Using API endpoint');
@@ -104,7 +115,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           const data = await response.json();
           console.log('API response data:', data);
           const aiMessageId = `ai-${Date.now()}`;
-          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+          if (!cancelled) {
+            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
+          }
         }
 
       } catch (error) {
@@ -114,16 +127,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           stack: error instanceof Error ? error.stack : 'No stack trace',
           name: error instanceof Error ? error.name : 'Unknown error type'
         });
-        setMessages([{ 
-          id: 'error-1', 
-          sender: MessageSender.AI, 
-          text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
-        }]);
+        if (!cancelled) {
+          setMessages([{ 
+            id: 'error-1', 
+            sender: MessageSender.AI, 
+            text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          }]);
+        }
       } finally {
         setIsLoading(false);
       }
     }
     initializeChat();
+    
+    // クリーンアップ関数
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
