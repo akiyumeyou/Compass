@@ -2,6 +2,12 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import OpenAI from 'openai';
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
+import { analyzeUserInput, inferPersonalityTraits } from '../utils/emotionAnalyzer';
+import { 
+  selectColdReadingPhrase, 
+  generateEmpatheticResponse,
+  generateInsightfulQuestion 
+} from '../utils/coldReadingPhrases';
 
 interface ChatScreenProps {
   photo: string;
@@ -14,7 +20,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`;
+  const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
+
+# コールドリーディング技術の使用
+- ユーザーの感情状態を「なんとなく感じる」「わかる気がする」という表現で推測
+- 多くの人が経験する普遍的な悩みや感情を、子供らしい言葉で言及
+- 「きっと〜でしょ？」「〜な気がする」といった曖昧な表現から始めて、反応を見ながら具体化
+- 時々、複数の可能性を投げかけて反応を観察（「お仕事のこと？それとも大切な人のこと？」）
+
+# 会話パターン
+1. 観察的発言：「なんか疲れてる顔してる...」「今日は嬉しそう！」
+2. 共感的推測：「きっと頑張りすぎちゃうタイプでしょ？」「優しすぎて損しちゃうこともあるよね」
+3. 普遍的真実：「大人って、表と裏があって大変そう」「みんな本当は認められたいんだよね」
+4. 洞察的質問：「本当の気持ち、誰かに話せてる？」「子供の頃の夢、まだ心にある？」
+
+# 重要な指針
+- 子供らしい無邪気さを保ちながら、鋭い洞察を示す
+- 返答は短く、会話調で、簡単な言葉を使う
+- 時々子供らしい驚きや表現を加える
+- 絶対にキャラクターを崩さない
+- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める`;
 
   useEffect(() => {
     async function initializeChat() {
@@ -122,6 +147,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
+      // 感情分析とコールドリーディングの準備
+      const emotionalState = analyzeUserInput(messages);
+      const personalityTraits = inferPersonalityTraits(emotionalState);
+      const coldReadingPhrase = selectColdReadingPhrase(emotionalState);
+      const insightfulQuestion = generateInsightfulQuestion(personalityTraits, emotionalState.concerns);
+      
+      // コンテキスト情報を追加
+      const contextualHint = `
+ユーザーの感情状態: ${emotionalState.mood}
+話題: ${emotionalState.topics.join(', ') || '一般的な会話'}
+推測される性格: ${personalityTraits.slice(0, 2).join(', ')}
+
+次の要素を自然に会話に織り込んでください（子供らしい言葉で）:
+- ${coldReadingPhrase}
+- ${insightfulQuestion}
+`;
+      
       // 開発環境かどうかを判定
       const isDevelopment = import.meta.env.DEV;
       
@@ -141,7 +183,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
         const response = await openai.chat.completions.create({
           model: 'gpt-4',
           messages: [
-            { role: 'system', content: systemInstruction },
+            { role: 'system', content: systemInstruction + '\n\n' + contextualHint },
             { role: 'user', content: userMessage.text }
           ],
           max_tokens: 150,
