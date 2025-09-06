@@ -20,7 +20,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [hasUserReplied, setHasUserReplied] = useState(false); // 1ターン管理用
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
 
@@ -46,16 +45,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 - 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
 - **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
-  // 1ターン完了後の遷移処理
+  // 1.5ターン完了後の遷移処理
   useEffect(() => {
-    // AIの初回メッセージ + ユーザーの返信がある場合、着信画面へ遷移
-    if (messages.length >= 2 && hasUserReplied && onFirstChatComplete) {
+    // AI初回メッセージ + ユーザー返信 + AI2回目メッセージ = 3メッセージで着信画面へ遷移
+    if (messages.length >= 3 && onFirstChatComplete) {
       const timer = setTimeout(() => {
         onFirstChatComplete(messages);
-      }, 1000); // 1秒後に遷移
+      }, 3000); // 3秒後に遷移
       return () => clearTimeout(timer);
     }
-  }, [messages, hasUserReplied, onFirstChatComplete]);
+  }, [messages, onFirstChatComplete]);
 
   useEffect(() => {
     // 既に初期化済みの場合はスキップ（React StrictMode対策）
@@ -177,11 +176,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     e.preventDefault();
     if (!userInput.trim() || isLoading) return;
 
-    // ユーザーが返信したことを記録
-    if (!hasUserReplied) {
-      setHasUserReplied(true);
-    }
-
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: MessageSender.USER,
@@ -273,13 +267,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     } finally {
       setIsLoading(false);
     }
-  }, [userInput, isLoading, messages, hasUserReplied]);
+  }, [userInput, isLoading, messages]);
 
   console.log('ChatScreen render - messages:', messages);
   console.log('ChatScreen render - isLoading:', isLoading);
   
   return (
-    <div className="flex flex-col h-full bg-black bg-opacity-80">
+    <div className="absolute inset-0 flex flex-col bg-black bg-opacity-80 rounded-[2rem] overflow-hidden">
       {/* Header */}
       <div className="flex items-center p-3 border-b border-gray-700 bg-gray-900">
         <img src={photo} alt="幼い頃の自分" className="w-10 h-10 rounded-full object-cover" />

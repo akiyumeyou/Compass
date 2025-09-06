@@ -155,9 +155,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   }, [messages]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
+    <div className="absolute inset-0 flex flex-col bg-gray-900">
       {/* ビデオエリア（上部） */}
-      <div className="relative flex-shrink-0 h-2/5 bg-black">
+      <div className="relative flex-shrink-0 h-2/5 bg-black rounded-t-[2rem] overflow-hidden">
         <img 
           src={photo} 
           alt="幼い頃のあなた" 

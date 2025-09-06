@@ -20,13 +20,12 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ photo, o
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black">
-      {/* 背景: ぼかした子供の写真 */}
+    <div className="absolute inset-0 bg-black">
+      {/* 背景: 子供の写真を全画面表示 */}
       <div 
-        className="absolute inset-0 bg-cover bg-center"
+        className="absolute inset-0 bg-cover bg-center rounded-[2rem] overflow-hidden"
         style={{
           backgroundImage: `url(${photo})`,
-          filter: 'blur(20px)',
         }}
       >
         <div className="absolute inset-0 bg-black bg-opacity-50" />
@@ -34,19 +33,9 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ photo, o
 
       {/* コンテンツ */}
       <div className="relative z-10 h-full flex flex-col justify-between p-8">
-        {/* 上部: PiP風の小さな写真 */}
+        {/* 上部: 空白エリア */}
         <div className="flex justify-start">
-          <div 
-            className={`w-24 h-32 rounded-lg overflow-hidden shadow-2xl transform transition-transform ${
-              isAnimating ? 'scale-105' : 'scale-100'
-            }`}
-          >
-            <img 
-              src={photo} 
-              alt="幼い頃のあなた" 
-              className="w-full h-full object-cover"
-            />
-          </div>
+          {/* 空白 */}
         </div>
 
         {/* 中央: 着信情報 */}

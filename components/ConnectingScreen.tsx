@@ -113,7 +113,7 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
   }, [photo, onConverted, onConnected]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-black text-white p-8">
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white p-8 rounded-[2rem] overflow-hidden">
       {photo && (
         <div className="relative mb-8">
           <img src={photo} alt="幼い頃のあなた" className="w-32 h-32 rounded-full object-cover border-4 border-gray-700 shadow-lg"/>
