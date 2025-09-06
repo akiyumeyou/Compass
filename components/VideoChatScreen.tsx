@@ -8,14 +8,117 @@ interface VideoChatScreenProps {
   photo: string;
   onEndCall: () => void;
   initialHistory?: ChatMessage[];
+  gender?: 'male' | 'female';
 }
 
-export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCall, initialHistory = [] }) => {
+export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCall, initialHistory = [], gender = 'male' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(initialHistory);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const initialSpokenRef = useRef<boolean>(false);
+  const lastSpokenTextRef = useRef<string>('');
+
+  // OpenAI TTS機能（重複防止）
+  const speakText = async (text: string) => {
+    try {
+      // 同じテキストの重複読み上げを防止
+      if (lastSpokenTextRef.current === text) {
+        console.log('Duplicate text detected, skipping TTS:', text);
+        return;
+      }
+      lastSpokenTextRef.current = text;
+
+      // 既存の音声を停止
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+
+      const isDevelopment = import.meta.env.DEV;
+      
+      if (isDevelopment) {
+        const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        if (!apiKey) {
+          console.warn('OpenAI API key not found, skipping TTS');
+          return;
+        }
+
+        // OpenAI TTS API呼び出し
+        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'tts-1',
+            input: text,
+            voice: gender === 'female' ? 'alloy' : 'nova', // 性別に基づいて音声を選択
+            response_format: 'mp3',
+            speed: 0.9
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI TTS failed: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
+        // 現在の音声として設定
+        currentAudioRef.current = audio;
+        
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          // 音声完了後は重複チェックをリセット
+          lastSpokenTextRef.current = '';
+        };
+        
+        await audio.play();
+      } else {
+        // 本番環境: APIルート経由でTTS
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, gender }),
+        });
+
+        if (!response.ok) {
+          throw new Error('TTS API request failed');
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        
+        // 現在の音声として設定
+        currentAudioRef.current = audio;
+        
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          // 音声完了後は重複チェックをリセット
+          lastSpokenTextRef.current = '';
+        };
+        
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('TTS error:', error);
+      // エラー時は音声出力をスキップ（フォールバック無し）
+    }
+  };
 
   // 通話時間のカウンター
   useEffect(() => {
@@ -26,6 +129,35 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     return () => clearInterval(timer);
   }, []);
 
+  // コンポーネント終了時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      // 音声を停止
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  // 初期メッセージがある場合、最後のAIメッセージを読み上げる（1回のみ）
+  useEffect(() => {
+    if (initialHistory.length > 0 && !initialSpokenRef.current) {
+      const lastAiMessage = initialHistory
+        .filter(msg => msg.sender === MessageSender.AI)
+        .pop();
+      
+      if (lastAiMessage) {
+        initialSpokenRef.current = true;
+        // 遅延を短縮して読み上げる
+        setTimeout(() => {
+          speakText(lastAiMessage.text).catch(error => console.error('TTS error:', error));
+        }, 200);
+      }
+    }
+  }, [initialHistory]);
+
   // 通話時間のフォーマット
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -33,7 +165,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // システムインストラクション
+  // システムインストラクション（性別に基づいて動的に生成）
+  const pronoun = gender === 'female' ? '私' : '僕';
   const systemInstruction = `あなたは写真の子供（5-7歳）として、大人になった自分と話しています。
 
 重要な設定:
@@ -42,7 +175,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 - 難しい言葉は使わない
 - 好奇心旺盛で、大人になった自分のことをたくさん聞きたがる
 - 「すごーい！」「えー！」「ほんとに？」など感情豊かに反応する
-- 大人の自分を「未来のぼく/わたし」と呼ぶことがある
+- 大人の自分を「未来の${pronoun}」と呼ぶことがある
+- 自分のことを「${pronoun}」と呼ぶ
 - ときどき子供らしい間違いや勘違いをする
 
 話題の例:
@@ -104,6 +238,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           text: responseText
         };
         setMessages(prev => [...prev, aiMessage]);
+        
+        // AIメッセージを音声で読み上げる
+        speakText(responseText).catch(error => console.error('TTS error:', error));
       } else {
         // 本番環境
         const conversationHistory = messages.map(msg => ({
@@ -132,6 +269,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           text: data.response
         };
         setMessages(prev => [...prev, aiMessage]);
+        
+        // AIメッセージを音声で読み上げる
+        speakText(data.response).catch(error => console.error('TTS error:', error));
       }
     } catch (error) {
       console.error('Failed to send message:', error);

@@ -88,21 +88,56 @@ export type UdemyCourse = {
   
   // 超軽量マッチ（タグ一致×2点、キーワード部分一致×1点）
   export function recommendCourses(input: string, topN = 6): UdemyCourse[] {
+    console.log('🔍 recommendCourses called with:', input);
     const q = input.toLowerCase();
     const score = (c: UdemyCourse) => {
       let s = 0;
       for (const t of c.tags) if (q.includes(t.toLowerCase())) s += 2;
       for (const k of c.keywords) if (q.includes(k.toLowerCase())) s += 1;
-      // 何も当たらない場合は小スコア
-      if (s === 0 && /学ぶ|勉強|講座|コース/.test(input)) s = 1;
+      
+      // 一般的な学習キーワードでマッチしない場合のフォールバック
+      if (s === 0) {
+        // 学習・成長系キーワード
+        if (/学ぶ|勉強|講座|コース|学習|スキル|成長|上達|習得|身につけ|レベルアップ/.test(input)) {
+          console.log('📖 Matched learning keywords, setting score to 1');
+          s = 1;
+        }
+        // プログラミング系キーワード
+        else if (/プログラミング|コード|開発|アプリ|ウェブ|web|python|javascript|react/.test(input)) {
+          console.log('💻 Matched programming keywords, setting score to 1');
+          s = 1;
+        }
+        // キャリア・ビジネス系キーワード
+        else if (/キャリア|転職|働き方|起業|ビジネス|戦略|目標|夢/.test(input)) {
+          console.log('💼 Matched career keywords, setting score to 1');
+          s = 1;
+        }
+        // テスト・デバッグ系キーワード
+        else if (/テスト|test|デバッグ|debug|問題解決|解決/.test(input)) {
+          console.log('🧪 Matched test keywords, setting score to 1');
+          s = 1;
+        }
+      }
       return s;
     };
-    return [...UDEMY_COURSES]
+    
+    const scoredCourses = [...UDEMY_COURSES]
       .map(c => ({ c, s: score(c) }))
       .sort((a, b) => b.s - a.s)
-      .filter(x => x.s > 0)
-      .slice(0, topN)
-      .map(x => x.c);
+      .filter(x => x.s > 0);
+    
+    console.log('📊 Scored courses:', scoredCourses.map(sc => ({ title: sc.c.title, score: sc.s })));
+    
+    // スコアが0の場合は、ランダムにいくつかの講座を返す
+    if (scoredCourses.length === 0) {
+      console.log('🎲 No scored courses, returning random courses');
+      const shuffled = [...UDEMY_COURSES].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, Math.min(topN, 3));
+    }
+    
+    const result = scoredCourses.slice(0, topN).map(x => x.c);
+    console.log('✅ Final recommended courses:', result.map(c => c.title));
+    return result;
   }
 
   // === TEAM MODIFICATION START ===
@@ -131,13 +166,17 @@ export type UdemyCourse = {
       'テスト', 'test', 'Udemy', 'udemy', '講座'
     ];
     
+    console.log('📝 Available keywords:', positiveKeywords);
+    
     // より柔軟なマッチング（部分一致でも検出）
     const normalizedMessage = message.toLowerCase();
+    console.log('🔤 Normalized message:', normalizedMessage);
+    
     const hasKeyword = positiveKeywords.some(keyword => {
       const normalizedKeyword = keyword.toLowerCase();
       const found = normalizedMessage.includes(normalizedKeyword);
       if (found) {
-        console.log('✅ Found keyword:', keyword);
+        console.log('✅ Found keyword:', keyword, 'in message:', message);
       }
       return found;
     });
@@ -166,8 +205,12 @@ export type UdemyCourse = {
 
   // サムネイル付きUdemy講座情報を返す関数
   export function getUdemyCourseWithThumbnail(userMessage: string): UdemyCourse | null {
+    console.log('🎯 getUdemyCourseWithThumbnail called with:', userMessage);
     const courses = recommendCourses(userMessage, 1);
-    return courses.length > 0 ? courses[0] : null;
+    console.log('📚 Recommended courses:', courses);
+    const result = courses.length > 0 ? courses[0] : null;
+    console.log('✅ Final course result:', result);
+    return result;
   }
   // === TEAM MODIFICATION END ===
   

@@ -13,19 +13,26 @@ const App: React.FC = () => {
   const [childhoodPhoto, setChildhoodPhoto] = useState<string | null>(null);
   const [convertedPhoto, setConvertedPhoto] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [detectedGender, setDetectedGender] = useState<'male' | 'female'>('male');
 
   const handlePhotoUpload = useCallback((photoDataUrl: string) => {
     setChildhoodPhoto(photoDataUrl);
     setConvertedPhoto(null);
-    setAppState({ screen: Screen.CONNECTING });
+    // 即座にチャット画面に遷移し、バックグラウンドで画像処理を開始
+    setAppState({ screen: Screen.CHAT });
   }, []);
 
   const handleConnected = useCallback(() => {
+    // この関数は不要になるが、互換性のため残す
     setAppState({ screen: Screen.CHAT });
   }, []);
 
   const handleConverted = useCallback((transformed: string) => {
     setConvertedPhoto(transformed);
+  }, []);
+
+  const handleGenderDetected = useCallback((gender: 'male' | 'female') => {
+    setDetectedGender(gender);
   }, []);
 
   const handleEndCall = useCallback(() => {
@@ -56,6 +63,7 @@ const App: React.FC = () => {
       case Screen.UPLOAD:
         return <UploadScreen onPhotoUpload={handlePhotoUpload} />;
       case Screen.CONNECTING:
+        // この画面はスキップされるが、互換性のため残す
         return <ConnectingScreen onConnected={handleConnected} onConverted={handleConverted} photo={childhoodPhoto} />;
       case Screen.CHAT:
         if (!childhoodPhoto) {
@@ -67,6 +75,8 @@ const App: React.FC = () => {
           photo={convertedPhoto || childhoodPhoto} 
           onEndCall={handleEndCall}
           onFirstChatComplete={handleFirstChatComplete}
+          onImageConverted={handleConverted}
+          onGenderDetected={handleGenderDetected}
         />;
       case Screen.INCOMING_CALL:
         if (!childhoodPhoto) {
@@ -87,6 +97,7 @@ const App: React.FC = () => {
           photo={convertedPhoto || childhoodPhoto}
           onEndCall={handleEndCall}
           initialHistory={chatHistory}
+          gender={detectedGender}
         />;
       default:
         return <UploadScreen onPhotoUpload={handlePhotoUpload} />;

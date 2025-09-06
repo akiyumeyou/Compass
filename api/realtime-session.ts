@@ -34,8 +34,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-realtime',
-        voice: 'verse', // 子供らしい声に近いプリセット
+        model: 'gpt-4o-realtime-preview',
+        voice: req.body.gender === 'female' ? 'alloy' : 'echo', // 性別に応じた声の選択
         modalities: ['audio', 'text'], // 音声とテキストの両方
         instructions: `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`,
         input_audio_format: 'pcm16',

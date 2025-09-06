@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { PhoneOff, Mic, Video } from 'lucide-react';
+import { PhoneOff, Mic, Video, Phone } from 'lucide-react';
+import { ringtone } from '../utils/ringtone';
 
 interface IncomingCallScreenProps {
   photo: string;
@@ -11,12 +12,19 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ photo, o
   const [isAnimating, setIsAnimating] = useState(true);
 
   useEffect(() => {
-    // 着信音やバイブレーションの代わりにアニメーションを開始
+    // 着信音を開始
+    ringtone.start();
+    
+    // 着信アニメーションを開始
     const timer = setInterval(() => {
       setIsAnimating(prev => !prev);
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      // 着信音を停止
+      ringtone.stop();
+    };
   }, []);
 
   return (
@@ -64,35 +72,33 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ photo, o
         </div>
 
         {/* 下部: コントロールボタン */}
-        <div className="flex justify-around items-center pb-8">
-          {/* マイクボタン（応答） */}
+        <div className="flex justify-center items-center gap-16 pb-8">
+          {/* 緑の応答ボタン（メイン） */}
           <button
-            onClick={onAnswer}
-            className="w-16 h-16 rounded-full bg-white bg-opacity-20 backdrop-blur-md flex items-center justify-center hover:bg-opacity-30 transition-all transform hover:scale-110"
+            onClick={() => {
+              ringtone.stop();
+              onAnswer();
+            }}
+            className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-600 transition-all transform hover:scale-110 shadow-lg animate-pulse"
           >
-            <Mic className="text-white" size={24} />
+            <Phone className="text-white" size={32} />
           </button>
 
-          {/* 終了ボタン（拒否） */}
+          {/* 赤い終了ボタン（拒否） */}
           <button
-            onClick={onReject}
+            onClick={() => {
+              ringtone.stop();
+              onReject();
+            }}
             className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-all transform hover:scale-110 shadow-lg"
           >
-            <PhoneOff className="text-white" size={28} />
-          </button>
-
-          {/* ビデオボタン（応答） */}
-          <button
-            onClick={onAnswer}
-            className="w-16 h-16 rounded-full bg-white bg-opacity-20 backdrop-blur-md flex items-center justify-center hover:bg-opacity-30 transition-all transform hover:scale-110"
-          >
-            <Video className="text-white" size={24} />
+            <PhoneOff className="text-white" size={32} />
           </button>
         </div>
       </div>
 
       {/* カスタムアニメーション用のスタイル */}
-      <style jsx>{`
+      <style>{`
         @keyframes ping {
           0% {
             transform: scale(1);

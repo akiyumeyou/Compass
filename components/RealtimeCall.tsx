@@ -4,6 +4,7 @@ import { MessageSender } from '../types';
 interface RealtimeCallProps {
   onMessage: (message: { id: string; sender: MessageSender; text: string }) => void;
   onEndCall: () => void;
+  gender: 'male' | 'female';
 }
 
 interface RealtimeSession {
@@ -13,13 +14,15 @@ interface RealtimeSession {
   };
 }
 
-const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall }) => {
+const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall, gender }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [pc, setPc] = useState<RTCPeerConnection | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>('');
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
 
   // 接続開始
   const startCall = useCallback(async () => {
@@ -57,9 +60,24 @@ const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall }) => 
 
       // 4. DataChannelでイベントを送受信
       const dataChannel = peer.createDataChannel('oai-events');
+      setDataChannel(dataChannel);
       
       dataChannel.onopen = () => {
         console.log('DataChannel opened');
+        // VAD設定
+        dataChannel.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            input_audio_transcription: { model: 'whisper-1' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500
+            }
+          }
+        }));
+        
         // 最初の応答リクエスト
         dataChannel.send(JSON.stringify({
           type: 'response.create',
@@ -75,7 +93,33 @@ const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall }) => 
           const data = JSON.parse(event.data);
           console.log('Received event:', data);
           
-          if (data.type === 'conversation.item.transcript.committed') {
+          // ユーザーの音声開始/終了の検出
+          if (data.type === 'input_audio_buffer.speech_started') {
+            setIsUserSpeaking(true);
+            console.log('User started speaking - interrupting AI');
+            // AI応答を中断
+            dataChannel.send(JSON.stringify({
+              type: 'response.cancel'
+            }));
+          }
+          
+          if (data.type === 'input_audio_buffer.speech_stopped') {
+            setIsUserSpeaking(false);
+            console.log('User stopped speaking');
+          }
+          
+          // AI応答の開始
+          if (data.type === 'response.audio.start') {
+            console.log('AI started speaking');
+          }
+          
+          // AI応答の完了
+          if (data.type === 'response.done') {
+            console.log('AI finished speaking');
+          }
+          
+          // トランスクリプトの更新
+          if (data.type === 'conversation.item.transcript.completed') {
             const text = data.item?.content || '';
             if (text) {
               setTranscript(text);
@@ -98,7 +142,7 @@ const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall }) => 
       const sessionResponse = await fetch('/api/realtime-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({ gender })
       });
 
       if (!sessionResponse.ok) {
@@ -232,19 +276,31 @@ const RealtimeCall: React.FC<RealtimeCallProps> = ({ onMessage, onEndCall }) => 
 
         {isConnected && (
           <div className="text-center space-y-4">
-            <div className="text-green-400">
-              <svg className="w-8 h-8 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-              </svg>
-              <p className="text-sm">音声通話中</p>
+            {/* 音声状態インジケーター */}
+            <div className={`transition-colors duration-300 ${isUserSpeaking ? 'text-blue-400' : 'text-green-400'}`}>
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                isUserSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-green-500'
+              }`}>
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <p className="text-sm">
+                {isUserSpeaking ? '話しています...' : '音声通話中'}
+              </p>
             </div>
             
-            <button
-              onClick={toggleMute}
-              className="px-4 py-2 bg-gray-700 text-white rounded-full hover:bg-gray-600 transition-colors"
-            >
-              ミュート切り替え
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={toggleMute}
+                className="block mx-auto px-4 py-2 bg-gray-700 text-white rounded-full hover:bg-gray-600 transition-colors"
+              >
+                ミュート切り替え
+              </button>
+              <p className="text-xs text-gray-400">
+                話し始めると自動的にAIが中断されます
+              </p>
+            </div>
           </div>
         )}
       </div>

@@ -16,18 +16,22 @@ interface ChatScreenProps {
   photo: string;
   onEndCall: () => void;
   onFirstChatComplete?: (history: ChatMessage[]) => void; // 1ターン完了時のコールバック
+  onImageConverted?: (convertedPhoto: string) => void; // 画像変換完了時のコールバック
+  onGenderDetected?: (gender: 'male' | 'female') => void; // 性別判定完了時のコールバック
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete, onImageConverted, onGenderDetected }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRealtimeMode, setIsRealtimeMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [currentPhoto, setCurrentPhoto] = useState<string>(photo); // 現在表示する写真
+  const [detectedGender, setDetectedGender] = useState<'male' | 'female' | null>(null); // 検出された性別（判定待ち、デフォルト男性）
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const initRef = useRef(false);
+  const ttsInProgressRef = useRef(false); // TTS重複実行防止
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
@@ -51,17 +55,296 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 - 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
 - **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
-  // 1.5ターン完了後の遷移処理
+  // 1ターン完了後の遷移処理（AI初回メッセージ + ユーザー返信のみ）
   useEffect(() => {
-    // AI初回メッセージ + ユーザー返信 + AI2回目メッセージ = 3メッセージで着信画面へ遷移
-    if (messages.length >= 3 && onFirstChatComplete) {
-      const timer = setTimeout(() => {
-        onFirstChatComplete(messages);
-      }, 3000); // 3秒後に遷移
-      return () => clearTimeout(timer);
+    // AI初回メッセージ + ユーザー返信 = 2メッセージで着信画面へ遷移
+    // 最後のメッセージがユーザーからのものであることを確認
+    if (messages.length >= 2 && onFirstChatComplete) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === MessageSender.USER) {
+        const timer = setTimeout(() => {
+          onFirstChatComplete(messages);
+        }, 2000); // 2秒後に遷移
+        return () => clearTimeout(timer);
+      }
     }
   }, [messages, onFirstChatComplete]);
 
+  // バックグラウンドで画像変換処理を実行
+  useEffect(() => {
+    let cancelled = false;
+    
+    async function processImageInBackground() {
+      try {
+        const isDevelopment = import.meta.env.DEV;
+        
+        if (isDevelopment && import.meta.env.VITE_GEMINI_API_KEY) {
+          // 開発環境でもGemini APIを使用して画像変換
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+          const match = photo.match(/^data:(.+);base64,(.*)$/);
+          if (!match) throw new Error('Invalid image data URL');
+          const mimeType = match[1];
+          const base64Data = match[2];
+
+          const prompt = 
+            "Using the provided image, create a photorealistic portrait of this person as a 7-year-old child. " +
+            "Preserve the original person's unique facial features, eye shape, and overall facial structure, " +
+            "but naturally adjusted for a younger age. The result should be instantly recognizable as the same person. " +
+            "Key requirements: " +
+            "- Smooth, youthful skin with rounder cheeks and softer facial contours " +
+            "- Proportionally larger eyes with an innocent, childlike gaze " +
+            "- Simple elementary school outfit (white shirt or Japanese school uniform) " +
+            "- Professional studio portrait style with soft natural lighting " +
+            "- Ultra photorealistic quality, like a real photograph, not an illustration";
+
+          const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent', {
+            method: 'POST',
+            headers: {
+              'x-goog-api-key': apiKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType, data: base64Data } }
+                  ]
+                }
+              ]
+            })
+          });
+
+          if (!resp.ok) {
+            throw new Error(`Gemini request failed: ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          let outData: string | null = null;
+          let outMime: string = 'image/png';
+          const candidates = data?.candidates || [];
+          for (const c of candidates) {
+            const parts = c?.content?.parts || [];
+            for (const p of parts) {
+              if (p?.inlineData?.data) {
+                outData = p.inlineData.data;
+                outMime = p.inlineData.mimeType || outMime;
+                break;
+              }
+            }
+            if (outData) break;
+          }
+          if (!outData) throw new Error('No image data in Gemini response');
+          const transformed = `data:${outMime};base64,${outData}`;
+          if (!cancelled && onImageConverted) {
+            onImageConverted(transformed);
+            setCurrentPhoto(transformed);
+          }
+        } else if (import.meta.env.VITE_GEMINI_API_KEY) {
+          // Frontend direct call for dev only
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+          const match = photo.match(/^data:(.+);base64,(.*)$/);
+          if (!match) throw new Error('Invalid image data URL');
+          const mimeType = match[1];
+          const base64Data = match[2];
+
+          const prompt = 
+            "Using the provided image, create a photorealistic portrait of this person as a 7-year-old child. " +
+            "Preserve the original person's unique facial features, eye shape, and overall facial structure, " +
+            "but naturally adjusted for a younger age. The result should be instantly recognizable as the same person. " +
+            "Key requirements: " +
+            "- Smooth, youthful skin with rounder cheeks and softer facial contours " +
+            "- Proportionally larger eyes with an innocent, childlike gaze " +
+            "- Simple elementary school outfit (white shirt or Japanese school uniform) " +
+            "- Professional studio portrait style with soft natural lighting " +
+            "- Ultra photorealistic quality, like a real photograph, not an illustration";
+
+          const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent', {
+            method: 'POST',
+            headers: {
+              'x-goog-api-key': apiKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType, data: base64Data } }
+                  ]
+                }
+              ]
+            })
+          });
+
+          if (!resp.ok) {
+            throw new Error(`Gemini request failed: ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          let outData: string | null = null;
+          let outMime: string = 'image/png';
+          const candidates = data?.candidates || [];
+          for (const c of candidates) {
+            const parts = c?.content?.parts || [];
+            for (const p of parts) {
+              if (p?.inlineData?.data) {
+                outData = p.inlineData.data;
+                outMime = p.inlineData.mimeType || outMime;
+                break;
+              }
+            }
+            if (outData) break;
+          }
+          if (!outData) throw new Error('No image data in Gemini response');
+          const transformed = `data:${outMime};base64,${outData}`;
+          if (!cancelled && onImageConverted) {
+            onImageConverted(transformed);
+            setCurrentPhoto(transformed);
+          }
+        } else {
+          // Backend call (recommended for prod)
+          try {
+            const resp = await fetch('/api/convert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageDataUrl: photo })
+            });
+            
+            if (!resp.ok) {
+              const text = await resp.text();
+              console.warn(`Convert API failed: ${resp.status} ${text}`);
+              throw new Error(`Convert API failed: ${resp.status}`);
+            }
+            
+            const json = await resp.json();
+            const transformed = json?.transformedDataUrl as string;
+            if (!transformed) {
+              console.warn('Invalid convert API response, using original image');
+              throw new Error('Invalid convert API response');
+            }
+            
+            if (!cancelled && onImageConverted) {
+              onImageConverted(transformed);
+            }
+          } catch (apiError) {
+            console.warn('API convert failed, using original image:', apiError);
+            // APIが利用できない場合は元の画像を使用
+            if (!cancelled && onImageConverted) {
+              onImageConverted(photo);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Background image conversion error', e);
+        // 失敗時は元の画像を使用
+        if (!cancelled && onImageConverted) {
+          onImageConverted(photo);
+          setCurrentPhoto(photo);
+        }
+      }
+    }
+
+    processImageInBackground();
+    return () => { cancelled = true; };
+  }, [photo, onImageConverted]);
+
+  // バックグラウンドで性別判定を実行
+  useEffect(() => {
+    let cancelled = false;
+    
+    async function detectGenderInBackground() {
+      try {
+        const isDevelopment = import.meta.env.DEV;
+        
+        if (isDevelopment) {
+          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+          if (!apiKey) {
+            console.warn('OpenAI API key not found, defaulting to male');
+            return;
+          }
+
+          // 開発環境では直接OpenAI APIを呼び出し
+          const openai = new OpenAI({ 
+            apiKey: apiKey,
+            dangerouslyAllowBrowser: true
+          });
+
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "この人物の性別を判定してください。回答は「male」または「female」のみで答えてください。他の文字は一切含めないでください。"
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: photo }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 10,
+            temperature: 0.1
+          });
+
+          const result = response.choices[0]?.message?.content?.toLowerCase().trim();
+          console.log('Gender detection result:', result);
+          const gender = (result === 'male' || result === 'female') ? result as 'male' | 'female' : 'male'; // デフォルトを男性に変更
+          console.log('Final gender:', gender);
+          
+          if (!cancelled) {
+            setDetectedGender(gender);
+            if (onGenderDetected) {
+              onGenderDetected(gender);
+            }
+          }
+        } else {
+          // 本番環境
+          const response = await fetch('/api/detect-gender', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageDataUrl: photo })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('API Gender detection result:', data);
+            const gender = data.gender || 'male'; // デフォルトを男性に変更
+            
+            if (!cancelled) {
+              setDetectedGender(gender);
+              if (onGenderDetected) {
+                onGenderDetected(gender);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Gender detection error:', error);
+        // エラー時はデフォルト（男性）のまま
+      }
+    }
+
+    detectGenderInBackground();
+    return () => { cancelled = true; };
+  }, [photo, onGenderDetected]);
+
+  // 性別判定完了後に初回メッセージを表示
+  useEffect(() => {
+    if (messages.length === 0 && detectedGender !== null) {
+      const pronoun = detectedGender === 'female' ? '私' : '僕';
+      const initialMessage: ChatMessage = {
+        id: Date.now().toString(),
+        sender: MessageSender.AI,
+        text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`
+      };
+      setMessages([initialMessage]);
+    }
+  }, [detectedGender, messages.length]);
 
   // === TEAM MODIFICATION START ===
   // URL検出とリンク化関数
@@ -165,13 +448,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
-        setUserInput(transcript);
+        setUserInput(prev => prev || transcript); // 既にテキストが入力されている場合は上書きしない
         setIsListening(false);
         
-        // 音声認識完了後、自動的にメッセージを送信
-        if (transcript.trim()) {
+        // テキストが入力されていない場合のみ自動送信
+        if (transcript.trim() && !userInput.trim()) {
           setTimeout(() => {
             handleSendMessage(new Event('submit') as any);
+            
+            // メッセージ送信後、TTS再生完了を待ってから再度マイクをオンにする
+            setTimeout(() => {
+              if (recognitionRef.current && !isListening && !isSpeaking) {
+                startListening();
+              }
+            }, 3000); // TTS再生時間を考慮して3秒後
           }, 500);
         }
       };
@@ -209,17 +499,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 
   // 音声合成停止
   const stopSpeaking = useCallback(() => {
+    console.log('Stopping all audio...');
+    
     // ブラウザ音声合成を停止
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+      // 確実に停止するため複数回実行
+      setTimeout(() => window.speechSynthesis.cancel(), 10);
+      setTimeout(() => window.speechSynthesis.cancel(), 50);
     }
+    
     // 現在再生中の音声を停止
     const audioElements = document.querySelectorAll('audio');
     audioElements.forEach(audio => {
       audio.pause();
       audio.currentTime = 0;
+      // 音声要素を削除
+      if (audio.parentNode) {
+        audio.parentNode.removeChild(audio);
+      }
     });
+    
     setIsSpeaking(false);
+    ttsInProgressRef.current = false; // フラグをリセット
   }, []);
 
   // テキストを男の子らしい表現に調整
@@ -231,22 +533,35 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       .replace(/、/g, '、'); // 読点を強調
   }, []);
 
-  // 音声合成でテキストを読み上げ
-  const speakText = useCallback(async (text: string) => {
+  // 音声合成でテキストを読み上げ（性別対応）
+  const speakText = useCallback(async (text: string): Promise<void> => {
     console.log('speakText called with:', text);
-    // 既存の音声をすべて停止
+    
+    // 重複実行防止
+    if (ttsInProgressRef.current || isSpeaking) {
+      console.log('TTS already in progress, skipping');
+      return Promise.resolve();
+    }
+    
+    // すべての音声を完全に停止
     stopSpeaking();
     
-    // テキストを男の子らしく調整
+    // 少し待ってから実行開始
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    ttsInProgressRef.current = true;
+    
+    // テキストを子供らしく調整
     const adjustedText = adjustTextForChildVoice(text);
     
+    const isDevelopment = import.meta.env.DEV;
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     
-    if (apiKey) {
+    if (isDevelopment && apiKey) {
       try {
         setIsSpeaking(true);
         
-        // OpenAI TTS APIを使用
+        // 開発環境: 直接OpenAI TTS APIを使用
         const response = await fetch('https://api.openai.com/v1/audio/speech', {
           method: 'POST',
           headers: {
@@ -256,7 +571,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           body: JSON.stringify({
             model: 'tts-1',
             input: adjustedText,
-            voice: 'nova', // 子供らしい声に近い
+            voice: (detectedGender === 'female') ? 'alloy' : 'onyx', // 性別に応じた声の選択（女性:alloy、男性:onyx）
             response_format: 'mp3',
             speed: 1.1 // 少し早めの話し方（子供らしく）
           })
@@ -267,149 +582,132 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           const audioUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioUrl);
           
-          audio.onended = () => {
-            setIsSpeaking(false);
-            URL.revokeObjectURL(audioUrl);
-          };
-          
-          audio.onerror = () => {
-            setIsSpeaking(false);
-            URL.revokeObjectURL(audioUrl);
-            // フォールバックとしてブラウザ音声合成を使用
-            fallbackToBrowserSpeech(text);
-          };
-          
-          await audio.play();
-          return;
+          return new Promise<void>((resolve) => {
+            audio.onended = () => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              resolve();
+            };
+            
+            audio.onerror = () => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              fallbackToBrowserSpeech(text).then(resolve);
+            };
+            
+            audio.play().catch(() => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              fallbackToBrowserSpeech(text).then(resolve);
+            });
+          });
         }
       } catch (error) {
         console.warn('OpenAI TTS API エラー:', error);
         // フォールバックとしてブラウザ音声合成を使用
       }
+    } else if (!isDevelopment) {
+      try {
+        setIsSpeaking(true);
+        
+        // 本番環境: TTSサーバーレス関数経由
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            text: adjustedText,
+            gender: detectedGender 
+          })
+        });
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          
+          return new Promise<void>((resolve) => {
+            audio.onended = () => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              resolve();
+            };
+            
+            audio.onerror = () => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              fallbackToBrowserSpeech(text).then(resolve);
+            };
+            
+            audio.play().catch(() => {
+              setIsSpeaking(false);
+              ttsInProgressRef.current = false;
+              URL.revokeObjectURL(audioUrl);
+              fallbackToBrowserSpeech(text).then(resolve);
+            });
+          });
+        }
+      } catch (error) {
+        console.warn('TTS API エラー:', error);
+        // フォールバックとしてブラウザ音声合成を使用
+      }
     }
     
     // フォールバック: ブラウザ音声合成
-    fallbackToBrowserSpeech(text);
-  }, [stopSpeaking, adjustTextForChildVoice]);
+    return fallbackToBrowserSpeech(text);
+  }, [stopSpeaking, adjustTextForChildVoice, detectedGender]);
 
-  // ブラウザ音声合成フォールバック
-  const fallbackToBrowserSpeech = useCallback((text: string) => {
+  // ブラウザ音声合成フォールバック（性別対応）
+  const fallbackToBrowserSpeech = useCallback((text: string): Promise<void> => {
     if ('speechSynthesis' in window) {
       // 既存の音声を停止
       window.speechSynthesis.cancel();
       
-      // テキストを男の子らしく調整
+      // テキストを子供らしく調整
       const adjustedText = adjustTextForChildVoice(text);
       const utterance = new SpeechSynthesisUtterance(adjustedText);
       utterance.lang = 'ja-JP';
-      utterance.rate = 1.3; // 少し早めの話し方（男の子らしく）
-      utterance.pitch = 1.6; // より高いピッチ（男の子の声に近づける）
-      utterance.volume = 0.9; // 少し大きめの音量（元気な男の子らしく）
+      utterance.rate = 1.3; // 少し早めの話し方（子供らしく）
       
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-      };
+      if (detectedGender === 'female') {
+        utterance.pitch = 1.8; // 高いピッチ（女の子の声）
+        utterance.volume = 0.8; // 少し控えめな音量
+      } else {
+        utterance.pitch = 1.6; // やや高いピッチ（男の子の声）
+        utterance.volume = 0.9; // 少し大きめの音量（元気な男の子らしく）
+      }
       
-      utterance.onend = () => {
-        setIsSpeaking(false);
-      };
-      
-      utterance.onerror = (event) => {
-        console.error('音声合成エラー:', event.error);
-        setIsSpeaking(false);
-      };
-      
-      window.speechSynthesis.speak(utterance);
+      return new Promise<void>((resolve) => {
+        utterance.onstart = () => {
+          setIsSpeaking(true);
+        };
+        
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          ttsInProgressRef.current = false;
+          resolve();
+        };
+        
+        utterance.onerror = (event) => {
+          console.error('音声合成エラー:', event.error);
+          setIsSpeaking(false);
+          ttsInProgressRef.current = false;
+          resolve();
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      });
     } else {
       console.warn('このブラウザは音声合成をサポートしていません');
+      return Promise.resolve();
     }
-  }, [adjustTextForChildVoice]);
+  }, [adjustTextForChildVoice, detectedGender]);
 
-  useEffect(() => {
-    // 既に初期化済みの場合はスキップ（React StrictMode対策）
-    if (initRef.current) return;
-    initRef.current = true;
-    
-    const initializeChat = async () => {
-      setIsLoading(true);
-      
-      try {
-        // 開発環境かどうかを判定
-        const isDevelopment = import.meta.env.DEV;
-        
-        if (isDevelopment) {
-          // 開発環境: 直接OpenAI APIを呼び出し
-          console.log('Development mode: Using direct OpenAI API');
-          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-          console.log('API Key exists:', !!apiKey);
-          
-          if (!apiKey) {
-            console.warn('API key not found, using demo message');
-            // APIキーがない場合はデモ用メッセージを表示
-            const demoMessage = "わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？";
-            const aiMessageId = `ai-${Date.now()}`;
-            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: demoMessage }]);
-          } else {
-            const openai = new OpenAI({ 
-              apiKey: apiKey,
-              dangerouslyAllowBrowser: true
-            });
-
-            console.log('Sending initialization message to OpenAI...');
-            const response = await openai.chat.completions.create({
-              model: 'gpt-4',
-              messages: [
-                { role: 'system', content: systemInstruction },
-                { role: 'user', content: "こんにちは！大人になった私と話したい！" }
-              ],
-              max_tokens: 150,
-              temperature: 0.9
-            });
-            
-            const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
-            console.log('OpenAI response:', responseText);
-            
-            const aiMessageId = `ai-${Date.now()}`;
-            setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
-          }
-        } else {
-          // 本番環境: Vercelサーバーレス関数経由
-          console.log('Production mode: Using Vercel API');
-          const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: "こんにちは！大人になった私と話したい！",
-              systemInstruction: systemInstruction
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const data = await response.json();
-          const responseText = data.message || 'すみません、うまく聞こえませんでした。';
-          console.log('API response:', responseText);
-          
-          const aiMessageId = `ai-${Date.now()}`;
-          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
-        }
-        
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error initializing chat:', error);
-        const errorMessage = "すみません、うまく話しかけられませんでした。もう一度試してみてね！";
-        const aiMessageId = `ai-${Date.now()}`;
-        setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: errorMessage }]);
-        setIsLoading(false);
-      }
-    };
-    
-    initializeChat();
-  }, []);
+  // 初期化処理は削除（初回メッセージは性別判定後に表示）
 
   useEffect(() => {
     console.log('Messages state updated:', messages);
@@ -504,10 +802,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       }
 
       // Udemy案内機能
-      if (detectPositiveKeywords(userMessage.text)) {
+      console.log('🎯 Starting Udemy detection for:', userMessage.text);
+      const hasPositiveKeywords = detectPositiveKeywords(userMessage.text);
+      console.log('🔍 Positive keywords detected:', hasPositiveKeywords);
+      
+      if (hasPositiveKeywords) {
+        console.log('✅ Positive keywords found, getting course recommendation...');
         const recommendedCourse = getUdemyCourseWithThumbnail(userMessage.text);
+        console.log('📚 Recommended course:', recommendedCourse);
+        
         if (recommendedCourse) {
+          console.log('🎓 Course found, generating suggestion...');
           const suggestion = generateUdemySuggestion(userMessage.text, [recommendedCourse]);
+          console.log('💬 Generated suggestion:', suggestion);
+          
           if (suggestion) {
             responseText += `\n\n${suggestion}`;
             udemyCourseData = {
@@ -516,8 +824,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
               url: recommendedCourse.url,
               thumbnail: recommendedCourse.thumbnail
             };
+            console.log('✅ Udemy suggestion added to response');
+          } else {
+            console.log('❌ No suggestion generated');
           }
+        } else {
+          console.log('❌ No course recommended');
         }
+      } else {
+        console.log('❌ No positive keywords detected');
       }
       
       const aiMessageId = `ai-${Date.now()}`;
@@ -529,6 +844,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       };
       
       setMessages(prev => [...prev, messageData]);
+
+      // 自動TTS再生を完全無効化（手動音声ボタンでのみ再生）
+      // const aiMessageCount = messages.filter(msg => msg.sender === MessageSender.AI).length;
+      // if (aiMessageCount >= 2 && !isSpeaking && !ttsInProgressRef.current) {
+      //   setTimeout(() => {
+      //     speakText(responseText).then(() => {
+      //       setTimeout(() => {
+      //         if (recognitionRef.current && !isListening) {
+      //           startListening();
+      //         }
+      //       }, 1000);
+      //     });
+      //   }, 1000);
+      // }
 
     } catch (error) {
       console.error("Error sending message:", error);
@@ -548,41 +877,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   // Realtimeモードの場合は専用コンポーネントを表示
   if (isRealtimeMode) {
     return (
-      <div className="flex flex-col h-full bg-black bg-opacity-80">
-        {/* Header */}
-        <div className="flex items-center p-3 border-b border-gray-700 bg-gray-900">
-          <img src={photo} alt="幼い頃の自分" className="w-10 h-10 rounded-full object-cover" />
-          <div className="ml-3 flex-1">
-            <p className="font-bold text-white">音声会話モード</p>
-            <p className="text-xs text-blue-400">Realtime API</p>
-          </div>
-          <button
-            onClick={toggleRealtimeMode}
-            className="p-2 rounded-full bg-red-600 text-white hover:bg-red-700"
-            title="音声モードをオフ"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* 音声会話エリア */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center space-y-4">
-            <div className="text-6xl mb-4">🎤</div>
-            <h2 className="text-2xl font-bold text-white mb-2">音声会話機能</h2>
-            <p className="text-gray-400 mb-6">この機能は現在開発中です</p>
-            
-            <button
-              onClick={toggleRealtimeMode}
-              className="px-6 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
-            >
-              テキストモードに戻る
-            </button>
-          </div>
-        </div>
-      </div>
+      <RealtimeCall
+        onMessage={handleRealtimeMessage}
+        onEndCall={handleRealtimeEndCall}
+        gender={detectedGender || 'male'}
+      />
     );
   }
   return (
@@ -617,31 +916,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
             )}
           </button>
 
-          {/* 音声出力ボタン */}
+          {/* リアルタイム会話開始ボタン */}
           <button
-            onClick={isSpeaking ? stopSpeaking : () => {
-              const lastAiMessage = messages.filter(msg => msg.sender === MessageSender.AI).pop();
-              if (lastAiMessage) {
-                speakText(lastAiMessage.text);
-              }
-            }}
-            disabled={!('speechSynthesis' in window)}
-            className={`p-2 rounded-full transition-colors ${
-              isSpeaking 
-                ? 'bg-red-600 text-white hover:bg-red-700' 
-                : 'bg-green-600 text-white hover:bg-green-700'
-            } disabled:bg-gray-600 disabled:cursor-not-allowed`}
-            title={isSpeaking ? '音声を停止' : '最後のメッセージを音声で再生'}
+            onClick={toggleRealtimeMode}
+            className="p-2 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
+            title="リアルタイム音声会話を開始"
           >
-            {isSpeaking ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6l12 12M6 18L18 6" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-              </svg>
-            )}
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
           </button>
         </div>
       </div>
@@ -651,7 +934,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         {/* 初期化中のローディング表示 */}
         {isLoading && messages.length === 0 && (
           <div className="flex items-end gap-2 justify-start">
-            <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
+            <img src={currentPhoto} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
             <div className="bg-gray-700 rounded-2xl rounded-bl-none px-4 py-2">
               <div className="flex items-center space-x-1">
                 <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
@@ -679,7 +962,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         ))}
          {isLoading && messages[messages.length - 1]?.sender === MessageSender.USER && (
             <div className="flex items-end gap-2 justify-start">
-              <img src={photo} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
+              <img src={currentPhoto} alt="AI" className="w-6 h-6 rounded-full object-cover self-start" />
               <div className="bg-gray-700 rounded-2xl rounded-bl-none px-4 py-2">
                 <div className="flex items-center space-x-1">
                     <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
@@ -701,6 +984,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
             placeholder={isListening ? "音声を認識中..." : "メッセージを入力または音声で話してください..."}
             className="flex-1 bg-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isLoading}
+            readOnly={false}
           />
           <button type="submit" disabled={isLoading || !userInput.trim()} className="bg-blue-600 rounded-full p-3 text-white disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
             <SendIcon />
