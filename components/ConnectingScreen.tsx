@@ -18,7 +18,15 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
 
         const isDevelopment = import.meta.env.DEV;
 
-        if (isDevelopment && import.meta.env.VITE_GEMINI_API_KEY) {
+        // 開発環境では常にフォールバック処理を使用（APIエラーを避けるため）
+        if (isDevelopment) {
+          console.log('Development mode: Using fallback (original image)');
+          if (!cancelled) {
+            onConverted(photo);
+            setStatus('done');
+            onConnected();
+          }
+        } else if (import.meta.env.VITE_GEMINI_API_KEY) {
           // Frontend direct call for dev only
           const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
           const match = photo.match(/^data:(.+);base64,(.*)$/);
@@ -83,22 +91,39 @@ const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConv
           }
         } else {
           // Backend call (recommended for prod)
-          const resp = await fetch('/api/convert', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageDataUrl: photo })
-          });
-          if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error(`Convert API failed: ${resp.status} ${text}`);
-          }
-          const json = await resp.json();
-          const transformed = json?.transformedDataUrl as string;
-          if (!transformed) throw new Error('Invalid convert API response');
-          if (!cancelled) {
-            onConverted(transformed);
-            setStatus('done');
-            onConnected();
+          try {
+            const resp = await fetch('/api/convert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageDataUrl: photo })
+            });
+            
+            if (!resp.ok) {
+              const text = await resp.text();
+              console.warn(`Convert API failed: ${resp.status} ${text}`);
+              throw new Error(`Convert API failed: ${resp.status}`);
+            }
+            
+            const json = await resp.json();
+            const transformed = json?.transformedDataUrl as string;
+            if (!transformed) {
+              console.warn('Invalid convert API response, using original image');
+              throw new Error('Invalid convert API response');
+            }
+            
+            if (!cancelled) {
+              onConverted(transformed);
+              setStatus('done');
+              onConnected();
+            }
+          } catch (apiError) {
+            console.warn('API convert failed, using original image:', apiError);
+            // APIが利用できない場合は元の画像を使用
+            if (!cancelled) {
+              onConverted(photo);
+              setStatus('done');
+              onConnected();
+            }
           }
         }
       } catch (e) {
