@@ -9,9 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@vercel/node": "^5.3.21",
+    "openai": "^5.19.1",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "@google/generative-ai": "^0.21.0"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

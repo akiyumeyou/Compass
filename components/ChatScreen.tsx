@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenerativeAI, ChatSession } from "@google/generative-ai";
+import OpenAI from 'openai';
 import { ChatMessage, MessageSender } from '../types';
 import { SendIcon } from './icons';
 
@@ -12,7 +12,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const chatRef = useRef<ChatSession | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。現在の生活、楽しいこと、悲しいこと、そして二人が持っていた夢を覚えているかどうかについて尋ねてください。子供が話すように、返答は短く、会話調にしてください。簡単な言葉を使い、時々子供らしい驚きや表現を加えてください。会話の始めには、「わー、本当にあなたなの？すごく…大人っぽい！大人になるってどんな感じ？」のような問いかけをしてください。絶対にキャラクターを崩してはいけません。`;
@@ -20,39 +19,86 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
   useEffect(() => {
     async function initializeChat() {
       try {
-        const genAI = new GoogleGenerativeAI(process.env.API_KEY as string);
-        const model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash',
-          systemInstruction 
-        });
-        
-        chatRef.current = model.startChat({
-          history: [],
-        });
-
-        // Start the conversation with the AI's first message
         setIsLoading(true);
-        const result = await chatRef.current.sendMessageStream("こんにちは！大人になった私と話したい！");
         
-        let text = '';
-        const aiMessageId = `ai-${Date.now()}`;
+        // 開発環境かどうかを判定
+        const isDevelopment = import.meta.env.DEV;
+        
+        if (isDevelopment) {
+          // 開発環境: 直接OpenAI APIを呼び出し
+          console.log('Development mode: Using direct OpenAI API');
+          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+          console.log('API Key exists:', !!apiKey);
+          
+          if (!apiKey) {
+            throw new Error('API key not found');
+          }
 
-        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: '' }]);
+          const openai = new OpenAI({ 
+            apiKey: apiKey,
+            dangerouslyAllowBrowser: true
+          });
 
-        for await (const chunk of result.stream) {
-          text += chunk.text();
-          setMessages(prev => prev.map(msg => msg.id === aiMessageId ? { ...msg, text } : msg));
+          console.log('Sending initialization message to OpenAI...');
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [
+              { role: 'system', content: systemInstruction },
+              { role: 'user', content: "こんにちは！大人になった私と話したい！" }
+            ],
+            max_tokens: 150,
+            temperature: 0.9
+          });
+          
+          const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
+          console.log('OpenAI response:', responseText);
+          
+          const aiMessageId = `ai-${Date.now()}`;
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+        } else {
+          // 本番環境: APIエンドポイント経由
+          console.log('Production mode: Using API endpoint');
+          console.log('Current URL:', window.location.href);
+          console.log('API endpoint URL:', '/api/chat');
+          
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
+          });
+
+          console.log('API response status:', response.status);
+          console.log('API response headers:', Object.fromEntries(response.headers.entries()));
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('API error response:', errorData);
+            throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
+          }
+
+          const data = await response.json();
+          console.log('API response data:', data);
+          const aiMessageId = `ai-${Date.now()}`;
+          setMessages([{ id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
         }
 
       } catch (error) {
-        console.error("Gemini API initialization failed:", error);
-        setMessages([{ id: 'error-1', sender: MessageSender.AI, text: "おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？" }]);
+        console.error("Chat initialization failed:", error);
+        console.error("Error details:", {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          name: error instanceof Error ? error.name : 'Unknown error type'
+        });
+        setMessages([{ 
+          id: 'error-1', 
+          sender: MessageSender.AI, 
+          text: `おっと！今うまく接続できないみたい。タイムマシンが壊れちゃったのかな？\n\nエラー詳細: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        }]);
       } finally {
         setIsLoading(false);
       }
     }
     initializeChat();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -64,7 +110,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
 
   const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || isLoading || !chatRef.current) return;
+    if (!userInput.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -76,22 +122,67 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
     setIsLoading(true);
 
     try {
-      const result = await chatRef.current.sendMessageStream(userMessage.text);
+      // 開発環境かどうかを判定
+      const isDevelopment = import.meta.env.DEV;
       
-      let text = '';
-      const aiMessageId = `ai-${Date.now()}`;
-      setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: '' }]);
+      if (isDevelopment) {
+        // 開発環境: 直接OpenAI APIを呼び出し
+        console.log('Sending user message to OpenAI:', userMessage.text);
+        const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error('API key not found');
+        }
 
-      for await (const chunk of result.stream) {
-        text += chunk.text();
-        setMessages(prev => {
-          return prev.map(msg => msg.id === aiMessageId ? { ...msg, text } : msg)
+        const openai = new OpenAI({ 
+          apiKey: apiKey,
+          dangerouslyAllowBrowser: true
         });
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userMessage.text }
+          ],
+          max_tokens: 150,
+          temperature: 0.9
+        });
+        
+        const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
+        console.log('OpenAI response to user message:', responseText);
+        
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: responseText }]);
+      } else {
+        // 本番環境: APIエンドポイント経由
+        console.log('Production mode: Sending message to API endpoint');
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMessage.text })
+        });
+
+        console.log('API response status:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API error response:', errorData);
+          throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
+        }
+
+        const data = await response.json();
+        console.log('API response data:', data);
+        const aiMessageId = `ai-${Date.now()}`;
+        setMessages(prev => [...prev, { id: aiMessageId, sender: MessageSender.AI, text: data.response }]);
       }
 
     } catch (error) {
       console.error("Error sending message:", error);
-      setMessages(prev => [...prev, { id: 'error-2', sender: MessageSender.AI, text: "頭がちょっとぼーっとする…よくわからなかった。" }]);
+      setMessages(prev => [...prev, { 
+        id: 'error-2', 
+        sender: MessageSender.AI, 
+        text: "頭がちょっとぼーっとする…よくわからなかった。" 
+      }]);
     } finally {
       setIsLoading(false);
     }

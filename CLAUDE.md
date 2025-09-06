@@ -6,15 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## システム概要
 
-「過去の自分とビデオ通話」- 幼少期の写真をアップロードしてAIが過去の自分として対話するReact/TypeScriptアプリケーション。Google Gemini APIを活用し、子供の視点から大人になった自分との感動的な対話を実現します。
+「過去の自分とビデオ通話」- 幼少期の写真をアップロードしてAIが過去の自分として対話するReact/TypeScriptアプリケーション。OpenAI GPT-4またはGoogle Gemini APIを活用し、子供の視点から大人になった自分との感動的な対話を実現します。
 
 ## 技術スタック
 
 - **Frontend**: React 19.1.1 + TypeScript 5.8
 - **Build Tool**: Vite 6.3.5
-- **AI Engine**: Google Generative AI (Gemini 1.5 Flash)
+- **AI Engine**: 
+  - OpenAI API (GPT-4) - 本番環境
+  - Google Generative AI (Gemini 1.5 Flash) - 代替オプション
 - **Styling**: Tailwind CSS (CDN)
 - **Package Manager**: npm
+- **Deployment**: Vercel
 
 ## 開発コマンド
 
@@ -42,6 +45,15 @@ npm outdated
 npm audit
 ```
 
+## 必須環境変数
+
+`.env.local`ファイルに以下を設定:
+- `VITE_OPENAI_API_KEY`: OpenAI APIキー（開発環境用）
+- `GEMINI_API_KEY`: Google Gemini APIキー（代替オプション）
+
+本番環境（Vercel）の環境変数:
+- `OPENAI_API_KEY`: OpenAI APIキー（本番環境用）
+
 ## 開発作業フロー（必須）
 
 ### 実装時の必須手順
@@ -55,7 +67,7 @@ npm audit
    - 既存のコードスタイルに従う
    - TypeScript型を厳密に定義
    - エラーハンドリングを適切に実装
-   - AIレスポンスのストリーミング処理を考慮
+   - AIレスポンスの処理を考慮
 
 3. **動作確認（必須）**
    ```bash
@@ -75,6 +87,8 @@ npm audit
 
 ```
 Compass/
+├── api/                     # サーバーレス関数
+│   └── chat.ts             # OpenAI API エンドポイント
 ├── components/              # Reactコンポーネント
 │   ├── ChatScreen.tsx      # チャット画面（メイン機能）
 │   ├── ConnectingScreen.tsx # 接続中画面
@@ -85,6 +99,7 @@ Compass/
 ├── index.tsx               # エントリーポイント
 ├── types.ts                # TypeScript型定義
 ├── vite.config.ts          # Vite設定
+├── vite-env.d.ts          # Vite環境変数型定義
 ├── package.json            # 依存関係管理
 └── .env.local              # 環境変数（Git管理外）
 ```
@@ -103,7 +118,13 @@ UPLOAD (最初に戻る)
 
 ## AI処理アーキテクチャ
 
-### Gemini API統合
+### OpenAI API統合（メイン）
+- **モデル**: `gpt-4`
+- **開発環境**: 直接OpenAI APIを呼び出し（`dangerouslyAllowBrowser: true`）
+- **本番環境**: Vercelサーバーレス関数(`/api/chat`)経由
+- **チャットセッション**: メッセージ履歴を管理
+
+### Gemini API統合（代替）
 - **モデル**: `gemini-1.5-flash`
 - **処理方式**: ストリーミングレスポンス
 - **初期化**: `GoogleGenerativeAI`クラス使用
@@ -123,13 +144,17 @@ UPLOAD (最初に戻る)
 
 ## 環境変数設定
 
+### 開発環境（`.env.local`）
 ```env
-# .env.local
-GEMINI_API_KEY=your_api_key_here
+# OpenAI API（メイン）
+VITE_OPENAI_API_KEY=your_openai_api_key_here
+
+# Gemini API（代替）
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 ### Vite環境変数の処理
-- `vite.config.ts`で`process.env.API_KEY`として定義
+- `vite.config.ts`で環境変数を定義
 - `loadEnv`を使用して`.env.local`から読み込み
 - クライアントサイドでアクセス可能に設定
 
@@ -172,7 +197,7 @@ onEndCall: () => void
 
 - React.memoによる不要な再レンダリング防止
 - useCallbackによるコールバック関数の最適化
-- ストリーミングレスポンスによるUX向上
+- ストリーミングレスポンスによるUX向上（Gemini使用時）
 - 画像の遅延読み込み考慮
 
 ## セキュリティ考慮事項
@@ -181,27 +206,34 @@ onEndCall: () => void
 - `.gitignore`での環境変数ファイル除外
 - XSS対策（React標準エスケープ）
 - ユーザーアップロード画像の検証
+- CORS設定（本番環境）
 
 ## トラブルシューティング
 
 ### よくある問題と解決策
 
-1. **Gemini APIエラー**
+1. **OpenAI APIエラー**
    - APIキーの有効性確認
-   - `.env.local`ファイルの存在確認
+   - `.env.local`ファイルの`VITE_OPENAI_API_KEY`確認
+   - 本番環境では`OPENAI_API_KEY`の設定確認
    - 開発サーバーの再起動
 
-2. **ビルドエラー**
+2. **Gemini APIエラー**
+   - APIキーの有効性確認
+   - `.env.local`ファイルの`GEMINI_API_KEY`確認
+   - 開発サーバーの再起動
+
+3. **ビルドエラー**
    - `npm install`で依存関係再インストール
    - `node_modules`削除して再インストール
    - TypeScript型エラーの確認
 
-3. **画面遷移の不具合**
+4. **画面遷移の不具合**
    - `appState`の状態確認
    - コールバック関数の正しい実装
    - 写真データの存在確認
 
-4. **スタイリングの崩れ**
+5. **スタイリングの崩れ**
    - Tailwind CDNの読み込み確認
    - ブラウザキャッシュのクリア
    - 開発者ツールでクラス適用確認
@@ -213,6 +245,7 @@ onEndCall: () => void
 - 会話履歴の保存機能
 - 感情分析による応答調整
 - 多言語対応
+- WebRTC実装による実際のビデオ通話機能
 
 ## 開発時の注意事項
 
@@ -221,3 +254,4 @@ onEndCall: () => void
 - エラーメッセージは日本語で統一
 - コミット前に必ずビルドチェック
 - APIキーを絶対にコミットしない
+- 本番環境と開発環境の切り分けを意識
