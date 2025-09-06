@@ -73,19 +73,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
             dangerouslyAllowBrowser: true
           });
 
-          console.log('Sending initialization message to OpenAI...');
+          console.log('Generating initial message from childhood self...');
           const response = await openai.chat.completions.create({
             model: 'gpt-4',
             messages: [
-              { role: 'system', content: systemInstruction },
-              { role: 'user', content: "こんにちは！大人になった私と話したい！" }
+              { role: 'system', content: systemInstruction + '\n\n最初のメッセージを生成してください。大人になった自分を見て驚いた反応から始めてください。' }
             ],
             max_tokens: 150,
             temperature: 0.9
           });
           
-          const responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
-          console.log('OpenAI response:', responseText);
+          const responseText = response.choices[0]?.message?.content || 'わぁ！大きくなった僕だ！すごく...大人っぽい！大人になるってどんな感じ？';
+          console.log('Initial greeting from childhood self:', responseText);
           
           const aiMessageId = `ai-${Date.now()}`;
           if (!cancelled) {
@@ -100,7 +99,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall }) => {
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: "こんにちは！大人になった私と話したい！" })
+            body: JSON.stringify({ 
+              message: "", 
+              isInitial: true,
+              systemPrompt: systemInstruction + '\n\n最初のメッセージを生成してください。大人になった自分を見て驚いた反応から始めてください。'
+            })
           });
 
           console.log('API response status:', response.status);
