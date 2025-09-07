@@ -48,3 +48,6 @@ test/
 *.spec.ts
 test-*.json
 test-*.html
+
+# Video files
+public/child_result.mp4

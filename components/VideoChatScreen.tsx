@@ -4,6 +4,7 @@ import { ChatMessage, MessageSender } from '../types';
 import OpenAI from 'openai';
 import { getRandomInitialMessage } from '../utils/initialMessages';
 import { generateVideoCallStartMessage } from '../utils/videoCallMessages';
+import { ThreeStepPersuasion, getConversationStage, analyzeConversationContext } from '../utils/conversationStrategy';
 
 interface VideoChatScreenProps {
   photo: string;
@@ -25,6 +26,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const lastSpokenTextRef = useRef<string>('');
   const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
+  const persuasionManagerRef = useRef<ThreeStepPersuasion>(new ThreeStepPersuasion(initialHistory));
 
   // OpenAI TTS機能（重複防止）
   const speakText = async (text: string) => {
@@ -201,27 +203,19 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // システムインストラクション（性別に基づいて動的に生成）
-  const pronoun = gender === 'female' ? '私' : '僕';
-  const systemInstruction = `あなたは写真の子供（5-7歳）として、大人になった自分と話しています。
-
-重要な設定:
-- 敬語は使わず、子供らしい話し方をする
-- 「〜だよ」「〜なんだ」「〜でしょ？」などの子供らしい語尾を使う
-- 難しい言葉は使わない
-- 好奇心旺盛で、大人になった自分のことをたくさん聞きたがる
-- 「すごーい！」「えー！」「ほんとに？」など感情豊かに反応する
-- 大人の自分を「未来の${pronoun}」と呼ぶことがある
-- 自分のことを「${pronoun}」と呼ぶ
-- ときどき子供らしい間違いや勘違いをする
-
-話題の例:
-- 「大きくなったらどんなお仕事してるの？」
-- 「結婚した？子供いる？」
-- 「今でも[好きだったもの]好き？」
-- 「夢は叶った？」
-
-会話は既に始まっているので、自然に継続してください。`;
+  // システムインストラクション（会話段階に基づいて動的に生成）
+  const getSystemInstruction = () => {
+    // 全メッセージ履歴を構築（初期履歴 + 現在のメッセージ）
+    const fullHistory = [...initialHistory, ...messages.slice(initialHistory.length)];
+    persuasionManagerRef.current.updateHistory(fullHistory[fullHistory.length - 1] || { 
+      id: '', 
+      sender: MessageSender.AI, 
+      text: '', 
+      conversationIndex: conversationCounterRef.current 
+    });
+    
+    return persuasionManagerRef.current.getCurrentPrompt(gender);
+  };
 
   // メッセージ送信処理
   const handleSendMessage = async () => {
@@ -260,7 +254,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         const response = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
-            { role: 'system', content: systemInstruction },
+            { role: 'system', content: getSystemInstruction() },
             ...conversationHistory,
             { role: 'user', content: userInput.trim() }
           ],
@@ -276,6 +270,20 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           conversationIndex: ++conversationCounterRef.current
         };
         setMessages(prev => [...prev, aiMessage]);
+        
+        // 会話段階に応じたログとアクション（開発環境）
+        const stage = getConversationStage(aiMessage.conversationIndex);
+        if (aiMessage.conversationIndex === 7) {
+          console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
+        } else if (aiMessage.conversationIndex === 10) {
+          console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
+        } else if (aiMessage.conversationIndex >= 11) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+          // 行動変容の約束を検出
+          if (responseText.includes('約束') || responseText.includes('指切り')) {
+            console.log('✨ 子供から約束を求められています！');
+          }
+        }
         
         // AIメッセージを音声で読み上げる
         speakText(responseText).then(() => {
@@ -299,7 +307,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           body: JSON.stringify({ 
             message: userInput.trim(),
             history: conversationHistory,
-            systemPrompt: systemInstruction
+            systemPrompt: getSystemInstruction()
           })
         });
 
@@ -315,10 +323,18 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           conversationIndex: ++conversationCounterRef.current
         };
         
-        // 特定の会話番号での処理実行例
-        if (aiMessage.conversationIndex === 10) {
-          console.log('🎯 会話番号10に到達！ビデオ通話での深い対話フェーズへ');
-          // 例：より感情的な繋がりを深める質問へ切り替え
+        // 会話段階に応じたログとアクション
+        const stage = getConversationStage(aiMessage.conversationIndex);
+        if (aiMessage.conversationIndex === 7) {
+          console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
+        } else if (aiMessage.conversationIndex === 10) {
+          console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
+        } else if (aiMessage.conversationIndex >= 11) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+          // 行動変容の約束を検出
+          if (data.response.includes('約束') || data.response.includes('指切り')) {
+            console.log('✨ 子供から約束を求められています！');
+          }
         }
         
         setMessages(prev => [...prev, aiMessage]);
