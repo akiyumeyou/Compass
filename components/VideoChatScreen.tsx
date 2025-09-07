@@ -3,6 +3,7 @@ import { MessageSquare, PhoneOff, Send } from 'lucide-react';
 import { ChatMessage, MessageSender } from '../types';
 import OpenAI from 'openai';
 import { getRandomInitialMessage } from '../utils/initialMessages';
+import { generateVideoCallStartMessage } from '../utils/videoCallMessages';
 
 interface VideoChatScreenProps {
   photo: string;
@@ -20,6 +21,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
 
   // OpenAI TTS機能（重複防止）
@@ -142,22 +144,30 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     };
   }, []);
 
-  // 初期メッセージがある場合、最後のAIメッセージを読み上げる（1回のみ）
+  // ビデオ通話開始時に新しい会話4を生成
   useEffect(() => {
-    if (initialHistory.length > 0 && !initialSpokenRef.current) {
-      const lastAiMessage = initialHistory
-        .filter(msg => msg.sender === MessageSender.AI)
-        .pop();
+    if (initialHistory.length > 0 && !initialMessageAddedRef.current) {
+      initialMessageAddedRef.current = true;
       
-      if (lastAiMessage) {
-        initialSpokenRef.current = true;
-        // 遅延を短縮して読み上げる
-        setTimeout(() => {
-          speakText(lastAiMessage.text).catch(error => console.error('TTS error:', error));
-        }, 200);
-      }
+      // 新しい会話4を生成（電話してきた理由）
+      const newMessage: ChatMessage = {
+        id: `ai-video-${Date.now()}`,
+        sender: MessageSender.AI,
+        text: generateVideoCallStartMessage(gender),
+        conversationIndex: initialHistory.length + 1 // 会話4として追加
+      };
+      
+      // conversationCounterを会話4に設定
+      conversationCounterRef.current = initialHistory.length + 1;
+      
+      // 遅延後にメッセージ追加と音声再生
+      setTimeout(() => {
+        setMessages(prev => [...prev, newMessage]);
+        // 新しいメッセージを音声で読み上げる
+        speakText(newMessage.text).catch(error => console.error('TTS error:', error));
+      }, 1000); // 1秒後に新メッセージ
     }
-  }, [initialHistory]);
+  }, [initialHistory, gender]);
 
   // 通話時間のフォーマット
   const formatTime = (seconds: number) => {
