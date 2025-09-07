@@ -1,0 +1,209 @@
+# システム仕様書
+
+生成日時: 2025/9/7 1:10:48
+
+## 1. システム概要
+
+**プロジェクト名**: 過去の自分とビデオ通話
+
+**説明**: 幼少期の写真をアップロードして、AIが過去の自分として対話するReact/TypeScriptアプリケーション。OpenAI GPT-4とGoogle Gemini APIを活用し、子供の視点から大人になった自分との感動的な対話を実現します。
+
+## 2. 技術スタック
+
+### フロントエンド
+- **React**: ^19.1.1
+- **TypeScript**: ~5.8.2
+- **Vite**: ^6.2.0
+- **スタイリング**: Tailwind CSS (CDN)
+
+### AI/ML
+- **OpenAI**: ^5.19.1
+- **Google Generative AI**: ^0.21.0
+
+### デプロイメント
+- **Vercel**: ^5.3.21
+
+## 3. 画面仕様
+
+### 画面遷移フロー
+```
+[1. UPLOAD画面]
+    ↓
+[2. CONNECTING画面]
+    ↓
+[3. CHAT画面]
+    ↓ (終了)
+[1. UPLOAD画面に戻る]
+```
+
+### 各画面の詳細
+
+#### 1. UPLOAD画面 (UploadScreen.tsx)
+- **機能**: 写真のアップロード
+- **主要UI要素**: 
+  - アップロードボタン
+  - ドラッグ&ドロップエリア
+  - エラーメッセージ表示
+- **遷移先**: CONNECTING画面
+
+#### 2. CONNECTING画面 (ConnectingScreen.tsx)
+- **機能**: 接続中のアニメーション表示と画像変換処理
+- **処理内容**:
+  - Gemini APIを使用した画像変換（大人→子供）
+  - 変換後、自動的にCHAT画面へ遷移
+- **遷移先**: CHAT画面
+
+#### 3. CHAT画面 (ChatScreen.tsx)
+- **機能**: AIとのビデオ通話風チャット
+- **主要UI要素**:
+  - 変換された子供の写真表示
+  - チャットメッセージエリア
+  - テキスト入力欄
+  - 送信ボタン
+  - 通話終了ボタン
+- **AI処理**: OpenAI GPT-4による子供視点の対話生成
+
+## 4. API仕様
+
+### エンドポイント一覧
+
+#### /api/chat
+- **メソッド**: POST
+- **ファイル**: api/chat.ts
+- **機能**: OpenAI APIとの通信
+
+
+#### /api/convert
+- **メソッド**: POST
+- **ファイル**: api/convert.ts
+- **機能**: Gemini APIによる画像変換
+
+
+#### /api/detect-gender
+- **メソッド**: POST
+- **ファイル**: api/detect-gender.ts
+- **機能**: 詳細は実装を参照
+
+
+#### /api/realtime-session
+- **メソッド**: POST
+- **ファイル**: api/realtime-session.ts
+- **機能**: 詳細は実装を参照
+
+
+#### /api/realtime
+- **メソッド**: GET
+- **ファイル**: api/realtime.ts
+- **機能**: 詳細は実装を参照
+
+
+#### /api/tts
+- **メソッド**: POST
+- **ファイル**: api/tts.ts
+- **機能**: 詳細は実装を参照
+
+
+## 5. コンポーネント構造
+
+### コンポーネント一覧
+
+#### ChatScreen
+- **ファイル**: components/ChatScreen.tsx
+- **Props**: photo: string;, onEndCall: () => void;, onFirstChatComplete?: (history: ChatMessage[]) => void; // 1ターン完了時のコールバック, onImageConverted?: (convertedPhoto: string) => void; // 画像変換完了時のコールバック, onGenderDetected?: (gender: 'male' | 'female') => void; // 性別判定完了時のコールバック, gender?: 'male' | 'female'; // 親から渡される性別
+
+
+#### ConnectingScreen
+- **ファイル**: components/ConnectingScreen.tsx
+- **Props**: onConnected: () => void;, onConverted: (transformed: string) => void;, onGenderDetected?: (gender: 'male' | 'female') => void;, photo: string | null;
+
+
+#### IncomingCallScreen
+- **ファイル**: components/IncomingCallScreen.tsx
+- **Props**: photo: string;, onAnswer: () => void;, onReject: () => void;
+
+
+#### PhoneFrame
+- **ファイル**: components/PhoneFrame.tsx
+- **Props**: children: React.ReactNode;
+
+
+#### RealtimeCall
+- **ファイル**: components/RealtimeCall.tsx
+- **Props**: onMessage: (message: { id: string; sender: MessageSender; text: string
+
+
+#### UploadScreen
+- **ファイル**: components/UploadScreen.tsx
+- **Props**: onPhotoUpload: (photoDataUrl: string) => void;
+
+
+#### VideoChatScreen
+- **ファイル**: components/VideoChatScreen.tsx
+- **Props**: photo: string;, onEndCall: () => void;, initialHistory?: ChatMessage[];, gender?: 'male' | 'female';
+
+
+#### icons
+- **ファイル**: components/icons.tsx
+- **Props**: なし
+
+
+## 6. 環境変数
+
+### 開発環境 (.env.local)
+- `VITE_OPENAI_API_KEY`: OpenAI APIキー（開発用）
+- `VITE_GEMINI_API_KEY`: Gemini APIキー（開発用）
+
+### 本番環境 (Vercel)
+- `OPENAI_API_KEY`: OpenAI APIキー（本番用）
+- `GEMINI_API_KEY`: Gemini APIキー（本番用）
+
+## 7. 主要な依存関係
+
+### 本番依存関係
+- **@google/generative-ai**: ^0.21.0
+- **@vercel/node**: ^5.3.21
+- **lucide-react**: ^0.542.0
+- **openai**: ^5.19.1
+- **react**: ^19.1.1
+- **react-dom**: ^19.1.1
+
+### 開発依存関係
+- **@types/node**: ^22.14.0
+- **dotenv**: ^17.2.2
+- **husky**: ^9.1.7
+- **tsx**: ^4.20.5
+- **typescript**: ~5.8.2
+- **vite**: ^6.2.0
+
+## 8. ビルド・デプロイ
+
+### 開発コマンド
+```bash
+# 開発サーバー起動
+npm run dev
+
+# 本番ビルド
+npm run build
+
+# プレビュー
+npm run preview
+```
+
+### デプロイメント
+- **プラットフォーム**: Vercel
+- **自動デプロイ**: GitHubのmainブランチへのpush時
+
+## 9. セキュリティ考慮事項
+
+- APIキーは環境変数で管理
+- 画像データはローカル処理（サーバー非保存）
+- XSS対策: Reactのデフォルトエスケープ機能を使用
+- CORS設定: APIエンドポイントで適切に設定
+
+## 10. 更新履歴
+
+- 2025/9/7: システム仕様書自動生成機能を追加
+
+---
+
+*このドキュメントは自動生成されました。*

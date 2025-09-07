@@ -17,7 +17,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
@@ -84,6 +86,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
+          // 音声完了後に動画を再生
+          playVideo();
         };
         
         await audio.play();
@@ -113,6 +117,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
+          // 音声完了後に動画を再生
+          playVideo();
         };
         
         await audio.play();
@@ -168,6 +174,25 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       }, 1000); // 1秒後に新メッセージ
     }
   }, [initialHistory, gender]);
+
+  // 動画再生関数
+  const playVideo = () => {
+    console.log('playVideo called, isVideoPlaying:', isVideoPlaying);
+    if (videoRef.current && !isVideoPlaying) {
+      videoRef.current.currentTime = 0; // 動画を最初から再生
+      videoRef.current.play().then(() => {
+        console.log('動画再生開始');
+        setIsVideoPlaying(true);
+      }).catch(error => {
+        console.error('動画再生エラー:', error);
+      });
+    }
+  };
+
+  // 動画終了時の処理
+  const handleVideoEnded = () => {
+    setIsVideoPlaying(false);
+  };
 
   // 通話時間のフォーマット
   const formatTime = (seconds: number) => {
@@ -253,7 +278,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         setMessages(prev => [...prev, aiMessage]);
         
         // AIメッセージを音声で読み上げる
-        speakText(responseText).catch(error => console.error('TTS error:', error));
+        speakText(responseText).then(() => {
+          console.log('TTS完了、動画再生を開始');
+          playVideo();
+        }).catch(error => {
+          console.error('TTS error:', error);
+          // TTSエラーでも動画は再生
+          playVideo();
+        });
       } else {
         // 本番環境
         const conversationHistory = messages.map(msg => ({
@@ -292,7 +324,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         setMessages(prev => [...prev, aiMessage]);
         
         // AIメッセージを音声で読み上げる
-        speakText(data.response).catch(error => console.error('TTS error:', error));
+        speakText(data.response).then(() => {
+          console.log('TTS完了、動画再生を開始');
+          playVideo();
+        }).catch(error => {
+          console.error('TTS error:', error);
+          // TTSエラーでも動画は再生
+          playVideo();
+        });
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -319,10 +358,21 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     <div className="absolute inset-0 flex flex-col bg-gray-900">
       {/* ビデオエリア（上部） */}
       <div className="relative flex-shrink-0 h-2/5 bg-black rounded-t-[2rem] overflow-hidden">
-        <img 
-          src={photo} 
-          alt="幼い頃のあなた" 
+        <video 
+          ref={videoRef}
+          src="/child_result.mp4"
           className="w-full h-full object-cover"
+          muted
+          playsInline
+          preload="auto"
+          onEnded={handleVideoEnded}
+          style={{ 
+            display: 'block',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 0
+          }}
         />
         
         {/* オーバーレイ情報 */}
@@ -332,12 +382,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
               <div className="text-white text-lg font-light">幼い頃のあなた</div>
               <div className="text-white/70 text-sm">{formatTime(elapsedTime)}</div>
             </div>
-            <button
-              onClick={onEndCall}
-              className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors"
-            >
-              <PhoneOff className="text-white" size={20} />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onEndCall}
+                className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors"
+              >
+                <PhoneOff className="text-white" size={20} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
