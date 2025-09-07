@@ -18,9 +18,10 @@ interface ChatScreenProps {
   onFirstChatComplete?: (history: ChatMessage[]) => void; // 1ターン完了時のコールバック
   onImageConverted?: (convertedPhoto: string) => void; // 画像変換完了時のコールバック
   onGenderDetected?: (gender: 'male' | 'female') => void; // 性別判定完了時のコールバック
+  gender?: 'male' | 'female'; // 親から渡される性別
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete, onImageConverted, onGenderDetected }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatComplete, onImageConverted, onGenderDetected, gender = 'male' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +29,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [currentPhoto, setCurrentPhoto] = useState<string>(photo); // 現在表示する写真
-  const [detectedGender, setDetectedGender] = useState<'male' | 'female' | null>(null); // 検出された性別（判定待ち、デフォルト男性）
+  const [detectedGender, setDetectedGender] = useState<'male' | 'female'>(gender); // 親から渡された性別を使用
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const ttsInProgressRef = useRef(false); // TTS重複実行防止
@@ -56,16 +57,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 - 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
 - **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
-  // 1ターン完了後の遷移処理（AI初回メッセージ + ユーザー返信のみ）
+  // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
   useEffect(() => {
-    // AI初回メッセージ + ユーザー返信 = 2メッセージで着信画面へ遷移
-    // 最後のメッセージがユーザーからのものであることを確認
-    if (messages.length >= 2 && onFirstChatComplete) {
+    // AI初回メッセージ + ユーザー返信 + AI応答 = 3メッセージで着信画面へ遷移
+    // 最後のメッセージがAIからのものであることを確認
+    if (messages.length >= 3 && onFirstChatComplete) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.sender === MessageSender.USER) {
+      if (lastMessage.sender === MessageSender.AI) {
         const timer = setTimeout(() => {
           onFirstChatComplete(messages);
-        }, 2000); // 2秒後に遷移
+        }, 3000); // 3秒後に遷移
         return () => clearTimeout(timer);
       }
     }
@@ -250,103 +251,32 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     return () => { cancelled = true; };
   }, [photo, onImageConverted]);
 
-  // バックグラウンドで性別判定を実行
+  // 性別判定結果を受け取る
   useEffect(() => {
-    let cancelled = false;
-    
-    async function detectGenderInBackground() {
-      try {
-        const isDevelopment = import.meta.env.DEV;
-        
-        if (isDevelopment) {
-          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-          if (!apiKey) {
-            console.warn('OpenAI API key not found, defaulting to male');
-            return;
-          }
-
-          // 開発環境では直接OpenAI APIを呼び出し
-          const openai = new OpenAI({ 
-            apiKey: apiKey,
-            dangerouslyAllowBrowser: true
-          });
-
-          const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "この人物の性別を判定してください。回答は「male」または「female」のみで答えてください。他の文字は一切含めないでください。"
-                  },
-                  {
-                    type: "image_url",
-                    image_url: { url: photo }
-                  }
-                ]
-              }
-            ],
-            max_tokens: 10,
-            temperature: 0.1
-          });
-
-          const result = response.choices[0]?.message?.content?.toLowerCase().trim();
-          console.log('Gender detection result:', result);
-          const gender = (result === 'male' || result === 'female') ? result as 'male' | 'female' : 'male'; // デフォルトを男性に変更
-          console.log('Final gender:', gender);
-          
-          if (!cancelled) {
-            setDetectedGender(gender);
-            if (onGenderDetected) {
-              onGenderDetected(gender);
-            }
-          }
-        } else {
-          // 本番環境
-          const response = await fetch('/api/detect-gender', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageDataUrl: photo })
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log('API Gender detection result:', data);
-            const gender = data.gender || 'male'; // デフォルトを男性に変更
-            
-            if (!cancelled) {
-              setDetectedGender(gender);
-              if (onGenderDetected) {
-                onGenderDetected(gender);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Gender detection error:', error);
-        // エラー時はデフォルト（男性）のまま
-      }
+    if (onGenderDetected) {
+      // 性別はConnectingScreenで判定済み
+      // detectedGenderは親コンポーネントから渡される
     }
+  }, [onGenderDetected]);
 
-    detectGenderInBackground();
-    return () => { cancelled = true; };
-  }, [photo, onGenderDetected]);
-
-  // 性別判定完了後に初回メッセージを表示
+  // 初回メッセージを少し遅延させて表示
   useEffect(() => {
-    if (messages.length === 0 && detectedGender !== null) {
-      const pronoun = detectedGender === 'female' ? '私' : '僕';
-      const initialMessage: ChatMessage = {
-        id: Date.now().toString(),
-        sender: MessageSender.AI,
-        text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
-        conversationIndex: ++conversationCounterRef.current
-      };
-      setMessages([initialMessage]);
+    if (messages.length === 0) {
+      // 画面表示後、少し間を置いてメッセージを表示
+      const timer = setTimeout(() => {
+        const pronoun = detectedGender === 'female' ? '私' : '僕';
+        const initialMessage: ChatMessage = {
+          id: Date.now().toString(),
+          sender: MessageSender.AI,
+          text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
+          conversationIndex: ++conversationCounterRef.current
+        };
+        setMessages([initialMessage]);
+      }, 800); // 0.8秒後に表示（画面が落ち着いてから）
+      
+      return () => clearTimeout(timer);
     }
-  }, [detectedGender, messages.length]);
+  }, []); // 初回マウント時のみ実行
 
   // === TEAM MODIFICATION START ===
   // URL検出とリンク化関数
