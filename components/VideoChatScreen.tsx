@@ -77,10 +77,11 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
   const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
   const videoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null); // ビデオ停止タイマー
+  const lastSpeakTimeRef = useRef<number>(0); // 最後に音声を再生した時刻
   
   // タイミング調整用の定数（ミリ秒）
-  const VIDEO_LEAD_TIME = 150; // ビデオを音声より早く開始する時間
-  const VIDEO_TRAIL_TIME = 400; // 音声終了後もビデオを継続する時間
+  const VIDEO_LEAD_TIME = 20; // ビデオをわずかに先行させる（口の動きが自然に見える）
+  const VIDEO_TRAIL_TIME = 300; // 音声終了後もビデオを継続する時間
   
   // ThreeStepPersuasionの初期化
   if (!persuasionManagerRef.current) {
@@ -110,8 +111,18 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         videoStopTimeoutRef.current = null;
       }
       
-      // ビデオを音声より早く開始（口の動きが先行）
-      playVideo();
+      console.log('🎤 TTS処理開始:', new Date().toISOString());
+      
+      // 会話間隔をチェック（2秒以上空いていたら一旦停止）
+      const now = Date.now();
+      const timeSinceLastSpeak = now - lastSpeakTimeRef.current;
+      if (lastSpeakTimeRef.current > 0 && timeSinceLastSpeak > 2000) {
+        console.log(`⏸️ ${timeSinceLastSpeak}ms経過したためビデオを一旦停止`);
+        stopVideo();
+        // 少し待ってから再開（自然な動作のため）
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      lastSpeakTimeRef.current = now;
 
       const isDevelopment = import.meta.env.DEV;
       
@@ -146,6 +157,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
         
+        console.log('🎵 音声データ準備完了:', new Date().toISOString());
+        
         // 現在の音声として設定
         currentAudioRef.current = audio;
         
@@ -162,8 +175,15 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }, VIDEO_TRAIL_TIME);
         };
         
-        // ビデオ開始後、少し遅延して音声を再生
-        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
+        // 音声準備完了後、ビデオと音声をほぼ同時に開始
+        console.log('🎬 ビデオ再生開始:', new Date().toISOString());
+        playVideo();
+        
+        // ビデオ開始後、わずかに遅延して音声再生（ビデオを先行させる）
+        if (VIDEO_LEAD_TIME > 0) {
+          await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
+        }
+        console.log('🎵 音声再生開始:', new Date().toISOString());
         await audio.play();
       } else {
         // 本番環境: APIルート経由でTTS
@@ -181,6 +201,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
         
+        console.log('🎵 音声データ準備完了:', new Date().toISOString());
+        
         // 現在の音声として設定
         currentAudioRef.current = audio;
         
@@ -197,13 +219,21 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }, VIDEO_TRAIL_TIME);
         };
         
-        // ビデオ開始後、少し遅延して音声を再生
-        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
+        // 音声準備完了後、ビデオと音声をほぼ同時に開始
+        console.log('🎬 ビデオ再生開始:', new Date().toISOString());
+        playVideo();
+        
+        // ビデオ開始後、わずかに遅延して音声再生（ビデオを先行させる）
+        if (VIDEO_LEAD_TIME > 0) {
+          await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
+        }
+        console.log('🎵 音声再生開始:', new Date().toISOString());
         await audio.play();
       }
     } catch (error) {
       console.error('TTS error:', error);
-      // エラー時は音声出力をスキップ（フォールバック無し）
+      // エラー時はビデオを停止
+      stopVideo();
     }
   };
 
@@ -249,7 +279,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         setMessages(prev => [...prev, newMessage]);
         // 新しいメッセージを音声で読み上げる
         speakText(newMessage.text).catch(error => console.error('TTS error:', error));
-      }, 1000); // 1秒後に新メッセージ
+      }, 500); // 0.5秒後に新メッセージ（高速化）
     }
   }, [initialHistory, gender]);
 
@@ -257,13 +287,21 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const playVideo = () => {
     console.log('playVideo called, isVideoPlaying:', isVideoPlaying);
     if (videoRef.current) {
-      // ループ再生のため、現在の位置から続けて再生
+      // 既に再生中でも継続して再生を保証
       if (!isVideoPlaying) {
+        // 停止中の場合は再生開始
         videoRef.current.play().then(() => {
           console.log('動画再生開始');
           setIsVideoPlaying(true);
         }).catch(error => {
           console.error('動画再生エラー:', error);
+        });
+      } else {
+        // 既に再生中の場合も継続を保証
+        console.log('動画は既に再生中、継続');
+        // ビデオが一時停止している可能性があるので再生を試みる
+        videoRef.current.play().catch(() => {
+          // 既に再生中の場合はエラーになるが無視
         });
       }
     }
@@ -271,16 +309,20 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   
   // 動画停止関数
   const stopVideo = () => {
-    console.log('stopVideo called');
+    console.log('🛑 stopVideo called, isVideoPlaying:', isVideoPlaying);
     if (videoRef.current && isVideoPlaying) {
       videoRef.current.pause();
       setIsVideoPlaying(false);
-      console.log('動画停止');
+      console.log('✅ 動画停止完了');
+    } else if (!isVideoPlaying) {
+      console.log('⚠️ ビデオは既に停止中');
     }
   };
 
-  // 動画終了時の処理
+  // 動画終了時の処理（ループ再生では呼ばれない）
   const handleVideoEnded = () => {
+    // ループ再生が有効なため、この関数は実際には呼ばれない
+    console.log('動画終了（ループ再生では発生しない）');
     setIsVideoPlaying(false);
   };
 
@@ -300,10 +342,10 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     // 全メッセージ履歴を構築（初期履歴 + 現在のビデオ通話メッセージ）
     const fullHistory = [...initialHistory, ...messages];
     
-    // 最新の履歴で persuasion manager を更新
-    if (fullHistory.length > 0) {
-      // 履歴全体を再構築
-      persuasionManagerRef.current = new ThreeStepPersuasion(fullHistory);
+    // 最新メッセージのみを追加（重複チェックはupdateHistory内で実施）
+    if (messages.length > 0) {
+      const latestMessage = messages[messages.length - 1];
+      persuasionManagerRef.current.updateHistory(latestMessage);
     }
     
     const basePrompt = persuasionManagerRef.current.getCurrentPrompt(gender);
@@ -345,6 +387,10 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   // メッセージ送信処理
   const handleSendMessage = async () => {
     if (!userInput.trim() || isLoading) return;
+    
+    // ユーザーが入力した時はビデオを停止（子供が聞いている状態）
+    console.log('👤 ユーザー入力のためビデオ停止');
+    stopVideo();
 
     const newUserMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -373,7 +419,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           dangerouslyAllowBrowser: true
         });
 
-        const conversationHistory = messages.map(msg => ({
+        // 完全な会話履歴を構築（初期履歴 + 現在のメッセージ）
+        const fullHistory = [...initialHistory, ...messages];
+        const conversationHistory = fullHistory.map(msg => ({
           role: msg.sender === MessageSender.AI ? 'assistant' as const : 'user' as const,
           content: msg.text
         }));
@@ -457,14 +505,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         };
         setMessages(prev => [...prev, aiMessage]);
         
-        // 会話段階に応じたログとアクション（開発環境）
+        // 会話段階に応じたログとアクション（開発環境）【早期発動版】
         const stage = getConversationStage(aiMessage.conversationIndex);
-        if (aiMessage.conversationIndex === 7) {
+        if (aiMessage.conversationIndex === 6) {
           console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
-        } else if (aiMessage.conversationIndex === 10) {
+        } else if (aiMessage.conversationIndex === 8) {
           console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
-        } else if (aiMessage.conversationIndex >= 11) {
-          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+        } else if (aiMessage.conversationIndex >= 9) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す（会話9で早期到達！）');
           // 行動変容の約束を検出
           if (responseText.includes('約束') || responseText.includes('指切り')) {
             console.log('✨ 子供から約束を求められています！');
@@ -479,7 +527,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         });
       } else {
         // 本番環境
-        const conversationHistory = messages.map(msg => ({
+        // 完全な会話履歴を構築（初期履歴 + 現在のメッセージ）
+        const fullHistory = [...initialHistory, ...messages];
+        const conversationHistory = fullHistory.map(msg => ({
           role: msg.sender === MessageSender.AI ? 'assistant' : 'user',
           content: msg.text
         }));
@@ -536,14 +586,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           ...(udemyCourseData && { udemyCourse: udemyCourseData })
         };
         
-        // 会話段階に応じたログとアクション
+        // 会話段階に応じたログとアクション【早期発動版】
         const stage = getConversationStage(aiMessage.conversationIndex);
-        if (aiMessage.conversationIndex === 7) {
+        if (aiMessage.conversationIndex === 6) {
           console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
-        } else if (aiMessage.conversationIndex === 10) {
+        } else if (aiMessage.conversationIndex === 8) {
           console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
-        } else if (aiMessage.conversationIndex >= 11) {
-          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+        } else if (aiMessage.conversationIndex >= 9) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す（会話9で早期到達！）');
           // 行動変容の約束を検出
           if (responseText.includes('約束') || responseText.includes('指切り')) {
             console.log('✨ 子供から約束を求められています！');
@@ -592,7 +642,6 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           loop
           playsInline
           preload="auto"
-          onEnded={handleVideoEnded}
           style={{ 
             display: 'block',
             position: 'absolute',
