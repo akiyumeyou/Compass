@@ -263,7 +263,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
   // 動画再生関数
   const playVideo = () => {
-    console.log('playVideo called, isVideoPlaying:', isVideoPlaying);
+    console.log('playVideo called, isVideoPlaying:', isVideoPlaying, 'gender:', gender);
+    
+    // 女性の場合は動画制御をスキップ（静止画表示のため）
+    if (gender === 'female') {
+      console.log('女性ユーザーのため動画制御をスキップ（静止画表示）');
+      return;
+    }
+    
     if (videoRef.current) {
       // 動画を最初から再生（音声と同期）
       videoRef.current.currentTime = 0;
@@ -290,7 +297,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   
   // 動画停止関数
   const stopVideo = () => {
-    console.log('🛑 stopVideo called, isVideoPlaying:', isVideoPlaying);
+    console.log('🛑 stopVideo called, isVideoPlaying:', isVideoPlaying, 'gender:', gender);
+    
+    // 女性の場合は動画制御をスキップ（静止画表示のため）
+    if (gender === 'female') {
+      console.log('女性ユーザーのため動画制御をスキップ（静止画表示）');
+      return;
+    }
+    
     if (videoRef.current) {
       // ループを無効化
       videoRef.current.loop = false;
@@ -622,22 +636,39 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     <div className="absolute inset-0 flex flex-col bg-gray-900">
       {/* ビデオエリア（上部） */}
       <div className="relative flex-shrink-0 h-2/5 bg-black rounded-t-[2rem] overflow-hidden">
-        <video 
-          ref={videoRef}
-          src="/child_result.mp4"
-          className="w-full h-full object-cover"
-          muted
-          playsInline
-          preload="auto"
-          onEnded={handleVideoEnded}
-          style={{ 
-            display: 'block',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 0
-          }}
-        />
+        {gender === 'male' ? (
+          // 男性の場合: 動画を表示
+          <video 
+            ref={videoRef}
+            src="/child_result.mp4"
+            className="w-full h-full object-cover"
+            muted
+            playsInline
+            preload="auto"
+            onEnded={handleVideoEnded}
+            style={{ 
+              display: 'block',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              zIndex: 0
+            }}
+          />
+        ) : (
+          // 女性の場合: 静止画を表示
+          <img 
+            src={photo}
+            alt="幼い頃のあなた"
+            className="w-full h-full object-cover"
+            style={{ 
+              display: 'block',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              zIndex: 0
+            }}
+          />
+        )}
         
         {/* オーバーレイ情報 */}
         <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
