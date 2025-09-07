@@ -59,11 +59,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 
   // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
   useEffect(() => {
-    // AI初回メッセージ + ユーザー返信 + AI応答 = 3メッセージで着信画面へ遷移
-    // 最後のメッセージがAIからのものであることを確認
-    if (messages.length >= 3 && onFirstChatComplete) {
+    // 会話ID 3のAIメッセージで着信画面へ遷移
+    if (messages.length > 0 && onFirstChatComplete) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.sender === MessageSender.AI) {
+      // conversationIndex === 3 かつ AIからのメッセージの場合
+      if (lastMessage.sender === MessageSender.AI && 
+          lastMessage.conversationIndex === 3) {
         const timer = setTimeout(() => {
           onFirstChatComplete(messages);
         }, 3000); // 3秒後に遷移
