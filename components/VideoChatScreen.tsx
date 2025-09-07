@@ -26,7 +26,12 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const lastSpokenTextRef = useRef<string>('');
   const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
-  const persuasionManagerRef = useRef<ThreeStepPersuasion>(new ThreeStepPersuasion(initialHistory));
+  const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
+  
+  // ThreeStepPersuasionの初期化
+  if (!persuasionManagerRef.current) {
+    persuasionManagerRef.current = new ThreeStepPersuasion(initialHistory);
+  }
 
   // OpenAI TTS機能（重複防止）
   const speakText = async (text: string) => {
@@ -205,14 +210,18 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
   // システムインストラクション（会話段階に基づいて動的に生成）
   const getSystemInstruction = () => {
-    // 全メッセージ履歴を構築（初期履歴 + 現在のメッセージ）
-    const fullHistory = [...initialHistory, ...messages.slice(initialHistory.length)];
-    persuasionManagerRef.current.updateHistory(fullHistory[fullHistory.length - 1] || { 
-      id: '', 
-      sender: MessageSender.AI, 
-      text: '', 
-      conversationIndex: conversationCounterRef.current 
-    });
+    if (!persuasionManagerRef.current) {
+      return ''; // フォールバック
+    }
+    
+    // 全メッセージ履歴を構築（初期履歴 + 現在のビデオ通話メッセージ）
+    const fullHistory = [...initialHistory, ...messages];
+    
+    // 最新の履歴で persuasion manager を更新
+    if (fullHistory.length > 0) {
+      // 履歴全体を再構築
+      persuasionManagerRef.current = new ThreeStepPersuasion(fullHistory);
+    }
     
     return persuasionManagerRef.current.getCurrentPrompt(gender);
   };
@@ -251,10 +260,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           content: msg.text
         }));
 
+        const systemPrompt = getSystemInstruction();
+        console.log('📝 System prompt for conversation index', conversationCounterRef.current + 1);
+        console.log('Stage:', getConversationStage(conversationCounterRef.current + 1));
+        
         const response = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
-            { role: 'system', content: getSystemInstruction() },
+            { role: 'system', content: systemPrompt },
             ...conversationHistory,
             { role: 'user', content: userInput.trim() }
           ],
@@ -301,13 +314,17 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           content: msg.text
         }));
 
+        const systemPrompt = getSystemInstruction();
+        console.log('📝 System prompt for conversation index', conversationCounterRef.current + 1);
+        console.log('Stage:', getConversationStage(conversationCounterRef.current + 1));
+        
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             message: userInput.trim(),
             history: conversationHistory,
-            systemPrompt: getSystemInstruction()
+            systemPrompt: systemPrompt
           })
         });
 
