@@ -290,7 +290,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         const initialMessage: ChatMessage = {
           id: Date.now().toString(),
           sender: MessageSender.AI,
-          text: `わあ！本当に大きくなった${pronoun}だ！すごーい！${pronoun}の顔、ちゃんと残ってる！ねえねえ、今何してるの？お仕事？それとも違うこと？`,
+          text: `わぁ！大きくなった${pronoun}だ！すごく大人になってる...ねえ、今どんなお仕事してるの？`,
           conversationIndex: ++conversationCounterRef.current
         };
         console.log('📝 Initial AI message with conversationIndex:', initialMessage.conversationIndex);
