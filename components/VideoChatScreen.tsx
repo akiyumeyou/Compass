@@ -237,7 +237,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       const newMessage: ChatMessage = {
         id: `ai-video-${Date.now()}`,
         sender: MessageSender.AI,
-        text: generateVideoCallStartMessage(gender),
+        text: generateVideoCallStartMessage(gender as 'male' | 'female'),
         conversationIndex: initialHistory.length + 1 // 会話4として追加
       };
       
