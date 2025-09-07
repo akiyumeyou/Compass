@@ -374,13 +374,6 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
             </div>
             <div className="flex gap-2">
               <button
-                onClick={playVideo}
-                className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center hover:bg-green-700 transition-colors"
-                title="動画を再生"
-              >
-                ▶️
-              </button>
-              <button
                 onClick={onEndCall}
                 className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors"
               >
