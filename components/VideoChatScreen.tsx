@@ -110,8 +110,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       
       console.log('🎤 TTS処理開始:', new Date().toISOString());
       
-      // ビデオを最初から開始（音声と同期）
-      playVideo();
+      // 動画の開始は音声準備完了後に移動（同期のため）
 
       const isDevelopment = import.meta.env.DEV;
       
@@ -161,11 +160,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声終了後、少し遅延させて動画を停止（自然な終了）
-          setTimeout(() => {
-            console.log('Stopping video after audio ended');
-            stopVideo();
-          }, 300); // 0.3秒後に停止（少し短縮）
+          // 音声終了と同時に即座に動画を停止（遅延なし）
+          console.log('Stopping video immediately after audio ended');
+          stopVideo();
         };
       } else {
         // 本番環境: APIルート経由でTTS
@@ -195,17 +192,16 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声終了後、少し遅延させて動画を停止（自然な終了）
-          setTimeout(() => {
-            console.log('Stopping video after audio ended');
-            stopVideo();
-          }, 300); // 0.3秒後に停止（少し短縮）
+          // 音声終了と同時に即座に動画を停止（遅延なし）
+          console.log('Stopping video immediately after audio ended');
+          stopVideo();
         };
       }
       
-      // 音声準備完了後、音声を再生
+      // 音声準備完了後、動画と音声を同時に開始
       if (audio) {
-        console.log('🎵 音声再生開始:', new Date().toISOString());
+        console.log('🎵 音声と動画を同時に開始:', new Date().toISOString());
+        playVideo();  // 音声と同時に動画を開始
         await audio.play();
       }
     } catch (error) {
@@ -297,7 +293,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   
   // 動画停止関数
   const stopVideo = () => {
-    console.log('🛑 stopVideo called, isVideoPlaying:', isVideoPlaying, 'gender:', gender);
+    console.log('🛑 stopVideo called, gender:', gender);
     
     // 女性の場合は動画制御をスキップ（静止画表示のため）
     if (gender === 'female') {
@@ -306,18 +302,15 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     }
     
     if (videoRef.current) {
-      // ループを無効化
+      // ループを即座に無効化
       videoRef.current.loop = false;
       
-      if (isVideoPlaying) {
-        videoRef.current.pause();
-        // 動画を最初に戻す（次回再生時のため）
-        videoRef.current.currentTime = 0;
-        setIsVideoPlaying(false);
-        console.log('✅ 動画停止完了（位置をリセット）');
-      } else {
-        console.log('⚠️ ビデオは既に停止中');
-      }
+      // 状態に関わらず強制的に動画を停止
+      videoRef.current.pause();
+      // 動画を最初に戻す（次回再生時のため）
+      videoRef.current.currentTime = 0;
+      setIsVideoPlaying(false);
+      console.log('✅ 動画を強制停止（位置をリセット）');
     }
   };
 
