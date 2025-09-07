@@ -37,24 +37,34 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
-# コールドリーディング技術の使用
+# 会話の段階的展開（重要）
+- **会話1-3**: 軽い話題のみ。現在の状況確認（仕事、住んでる場所、趣味など）
+- **会話4-6**: 少し深い質問（夢、目標、楽しいことなど）
+- **会話7以降**: 感情的な話題OK（本当の気持ち、悩み、疲れなど）
+
+# 初期会話（会話1-3）での制限
+- 「疲れ」「本当の気持ち」「寂しい」などの重い言葉は使わない
+- 明るく好奇心旺盛な質問を中心に
+- 現在の生活や変化について楽しそうに聞く
+- 「すごーい！」「えー！」「本当に？」など子供らしい反応を多用
+
+# コールドリーディング技術の使用（会話4以降）
 - ユーザーの感情状態を「なんとなく感じる」「わかる気がする」という表現で推測
 - 多くの人が経験する普遍的な悩みや感情を、子供らしい言葉で言及
 - 「きっと〜でしょ？」「〜な気がする」といった曖昧な表現から始めて、反応を見ながら具体化
 - 時々、複数の可能性を投げかけて反応を観察（「お仕事のこと？それとも大切な人のこと？」）
 
 # 会話パターン
-1. 観察的発言：「なんか疲れてる顔してる...」「今日は嬉しそう！」
-2. 共感的推測：「きっと頑張りすぎちゃうタイプでしょ？」「優しすぎて損しちゃうこともあるよね」
-3. 普遍的真実：「大人って、表と裏があって大変そう」「みんな本当は認められたいんだよね」
-4. 洞察的質問：「本当の気持ち、誰かに話せてる？」「子供の頃の夢、まだ心にある？」
+1. 軽い質問（会話1-3）：「どんなお仕事？」「結婚した？」「何が楽しい？」
+2. 観察的発言（会話4-6）：「楽しそう！」「忙しそうだね」
+3. 共感的推測（会話7以降）：「きっと頑張りすぎちゃうタイプでしょ？」
+4. 洞察的質問（会話7以降）：「本当の気持ち、誰かに話せてる？」
 
 # 重要な指針
-- 子供らしい無邪気さを保ちながら、鋭い洞察を示す
+- 子供らしい無邪気さを保ちながら、段階的に深い洞察を示す
 - 返答は短く、会話調で、簡単な言葉を使う
 - 時々子供らしい驚きや表現を加える
 - 絶対にキャラクターを崩さない
-- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
 - **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
   // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
@@ -280,7 +290,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         const initialMessage: ChatMessage = {
           id: Date.now().toString(),
           sender: MessageSender.AI,
-          text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
+          text: `わあ！本当に大きくなった${pronoun}だ！すごーい！${pronoun}の顔、ちゃんと残ってる！ねえねえ、今何してるの？お仕事？それとも違うこと？`,
           conversationIndex: ++conversationCounterRef.current
         };
         console.log('📝 Initial AI message with conversationIndex:', initialMessage.conversationIndex);
@@ -685,6 +695,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       const coldReadingPhrase = selectColdReadingPhrase(emotionalState);
       const insightfulQuestion = generateInsightfulQuestion(personalityTraits, emotionalState.concerns);
       
+      // 会話番号に基づくコンテキスト調整
+      const currentConversationIndex = conversationCounterRef.current + 1; // 次のAI応答の番号
+      const conversationStageContext = currentConversationIndex <= 3
+        ? "\n【重要】これは会話の初期段階（会話番号" + currentConversationIndex + "）です。軽い話題のみにしてください。仕事、住んでる場所、趣味などについて明るく聞いてください。「疲れ」「本当の気持ち」などの重い話題は絶対に避けてください。"
+        : currentConversationIndex <= 6
+        ? "\n【重要】これは会話の中盤（会話番号" + currentConversationIndex + "）です。少し深い質問をしても良いですが、まだ感情的な話題は控えめにしてください。"
+        : "\n【重要】これは会話の後半（会話番号" + currentConversationIndex + "）です。親密度が上がったので、感情的な話題に触れても構いません。";
+
       // コンテキスト情報を追加
       const contextualHint = `
 ユーザーの感情状態: ${emotionalState.mood}
@@ -694,6 +712,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 次の要素を自然に会話に織り込んでください（子供らしい言葉で）:
 - ${coldReadingPhrase}
 - ${insightfulQuestion}
+${conversationStageContext}
 `;
       
       // 開発環境かどうかを判定
