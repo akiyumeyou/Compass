@@ -38,7 +38,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
 # 会話の段階的展開（重要）
-- **会話1-3**: 軽い話題のみ。現在の状況確認（仕事、住んでる場所、趣味など）
+- **会話1-3**: 軽い話題のみ。現在の状況確認（仕事や日常の感想など）
 - **会話4-6**: 少し深い質問（夢、目標、楽しいことなど）
 - **会話7以降**: 感情的な話題OK（本当の気持ち、悩み、疲れなど）
 
@@ -698,7 +698,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       // 会話番号に基づくコンテキスト調整
       const currentConversationIndex = conversationCounterRef.current + 1; // 次のAI応答の番号
       const conversationStageContext = currentConversationIndex <= 3
-        ? "\n【重要】これは会話の初期段階（会話番号" + currentConversationIndex + "）です。軽い話題のみにしてください。仕事、住んでる場所、趣味などについて明るく聞いてください。「疲れ」「本当の気持ち」などの重い話題は絶対に避けてください。"
+        ? "\n【重要】これは会話の初期段階（会話番号" + currentConversationIndex + "）です。軽い話題のみにしてください。仕事や日常のことを自然に聞いてください。具体的な場所や詳細は聞かず、「どんな感じ？」「楽しい？」など感想を中心に。「疲れ」「本当の気持ち」などの重い話題は絶対に避けてください。"
         : currentConversationIndex <= 6
         ? "\n【重要】これは会話の中盤（会話番号" + currentConversationIndex + "）です。少し深い質問をしても良いですが、まだ感情的な話題は控えめにしてください。"
         : "\n【重要】これは会話の後半（会話番号" + currentConversationIndex + "）です。親密度が上がったので、感情的な話題に触れても構いません。";

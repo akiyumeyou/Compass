@@ -49,9 +49,9 @@ export function generateVideoCallStartMessage(gender: 'male' | 'female' = 'male'
   // 初めてのビデオ通話パターン
   const patterns = [
     `${reason} ちゃんと見える？わあ、大人の${pronoun}の顔、はっきり見える！`,
-    `${reason} すごい！本当に顔見ながら話せるんだね！ねえ、今どこにいるの？`,
-    `${reason} 画面越しだけど、会えて嬉しい！今日は何してたの？`,
-    `${reason} これがビデオ通話かぁ！大人の${pronoun}、今の部屋見せて！`,
+    `${reason} すごい！本当に顔見ながら話せるんだね！なんか不思議な感じ！`,
+    `${reason} 画面越しだけど、会えて嬉しい！今日はどんな一日だった？`,
+    `${reason} これがビデオ通話かぁ！大人の${pronoun}の顔、ちゃんと見えるよ！`,
     `${reason} 顔見て話せるの楽しい！ねえ、${topic}の話、もっと聞かせて！`
   ];
   
