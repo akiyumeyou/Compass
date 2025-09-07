@@ -20,6 +20,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
 
   // OpenAI TTS機能（重複防止）
   const speakText = async (text: string) => {
@@ -194,7 +195,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     const newUserMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: MessageSender.USER,
-      text: userInput.trim()
+      text: userInput.trim(),
+      conversationIndex: ++conversationCounterRef.current
     };
 
     setMessages(prev => [...prev, newUserMessage]);
@@ -235,7 +237,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         const aiMessage: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: MessageSender.AI,
-          text: responseText
+          text: responseText,
+          conversationIndex: ++conversationCounterRef.current
         };
         setMessages(prev => [...prev, aiMessage]);
         
@@ -266,8 +269,16 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         const aiMessage: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: MessageSender.AI,
-          text: data.response
+          text: data.response,
+          conversationIndex: ++conversationCounterRef.current
         };
+        
+        // 特定の会話番号での処理実行例
+        if (aiMessage.conversationIndex === 10) {
+          console.log('🎯 会話番号10に到達！ビデオ通話での深い対話フェーズへ');
+          // 例：より感情的な繋がりを深める質問へ切り替え
+        }
+        
         setMessages(prev => [...prev, aiMessage]);
         
         // AIメッセージを音声で読み上げる
@@ -322,11 +333,11 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       </div>
 
       {/* チャットエリア（下部） */}
-      <div className="flex-1 flex flex-col bg-gray-900">
+      <div className="flex-1 flex flex-col bg-gray-900 min-h-0">
         {/* メッセージエリア */}
         <div
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-3"
+          className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
         >
           {messages.map((message) => (
             <div

@@ -18,8 +18,7 @@ const App: React.FC = () => {
   const handlePhotoUpload = useCallback((photoDataUrl: string) => {
     setChildhoodPhoto(photoDataUrl);
     setConvertedPhoto(null);
-    // 即座にチャット画面に遷移し、バックグラウンドで画像処理を開始
-    setAppState({ screen: Screen.CHAT });
+    setAppState({ screen: Screen.CONNECTING });
   }, []);
 
   const handleConnected = useCallback(() => {
@@ -63,8 +62,12 @@ const App: React.FC = () => {
       case Screen.UPLOAD:
         return <UploadScreen onPhotoUpload={handlePhotoUpload} />;
       case Screen.CONNECTING:
-        // この画面はスキップされるが、互換性のため残す
-        return <ConnectingScreen onConnected={handleConnected} onConverted={handleConverted} photo={childhoodPhoto} />;
+        return <ConnectingScreen 
+          onConnected={handleConnected} 
+          onConverted={handleConverted}
+          onGenderDetected={handleGenderDetected}
+          photo={childhoodPhoto} 
+        />;
       case Screen.CHAT:
         if (!childhoodPhoto) {
             // Should not happen, but as a fallback
@@ -77,6 +80,7 @@ const App: React.FC = () => {
           onFirstChatComplete={handleFirstChatComplete}
           onImageConverted={handleConverted}
           onGenderDetected={handleGenderDetected}
+          gender={detectedGender}
         />;
       case Screen.INCOMING_CALL:
         if (!childhoodPhoto) {

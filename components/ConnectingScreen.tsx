@@ -1,31 +1,119 @@
 import React, { useEffect, useState } from 'react';
+import OpenAI from 'openai';
 
 interface ConnectingScreenProps {
   onConnected: () => void;
   onConverted: (transformed: string) => void;
+  onGenderDetected?: (gender: 'male' | 'female') => void;
   photo: string | null;
 }
 
-const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConverted, photo }) => {
+const ConnectingScreen: React.FC<ConnectingScreenProps> = ({ onConnected, onConverted, onGenderDetected, photo }) => {
   const [status, setStatus] = useState<'connecting' | 'converting' | 'done' | 'error'>('connecting');
 
   useEffect(() => {
     let cancelled = false;
+    
+    // 性別判定処理（並行実行）
+    async function detectGender() {
+      if (!photo || !onGenderDetected) return;
+      
+      try {
+        const isDevelopment = import.meta.env.DEV;
+        
+        if (isDevelopment) {
+          const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+          if (!apiKey) {
+            console.warn('OpenAI API key not found, defaulting to male');
+            onGenderDetected('male');
+            return;
+          }
+
+          const openai = new OpenAI({ 
+            apiKey: apiKey,
+            dangerouslyAllowBrowser: true
+          });
+
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "この人物の性別を判定してください。回答は「male」または「female」のみで答えてください。他の文字は一切含めないでください。"
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: photo }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 10,
+            temperature: 0.1
+          });
+
+          const result = response.choices[0]?.message?.content?.toLowerCase().trim();
+          const gender = (result === 'male' || result === 'female') ? result as 'male' | 'female' : 'male';
+          
+          if (!cancelled) {
+            onGenderDetected(gender);
+          }
+        } else {
+          // 本番環境
+          const response = await fetch('/api/detect-gender', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageDataUrl: photo })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const gender = data.gender || 'male';
+            
+            if (!cancelled) {
+              onGenderDetected(gender);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Gender detection error:', error);
+        if (!cancelled && onGenderDetected) {
+          onGenderDetected('male'); // デフォルト
+        }
+      }
+    }
+    
     async function run() {
       if (!photo) return;
       try {
         setStatus('converting');
 
         const isDevelopment = import.meta.env.DEV;
+        
+        // 性別判定を並行実行
+        detectGender();
 
-        // 開発環境では常にフォールバック処理を使用（APIエラーを避けるため）
-        if (isDevelopment) {
-          console.log('Development mode: Using fallback (original image)');
-          if (!cancelled) {
-            onConverted(photo);
-            setStatus('done');
-            onConnected();
-          }
+        // 開発環境での処理
+        if (isDevelopment && !import.meta.env.VITE_GEMINI_API_KEY) {
+          // APIキーがない場合は擬似的な処理時間を設ける
+          console.log('Development mode: Simulating image conversion');
+          setStatus('converting');
+          
+          // 擬似的な画像生成時間（3-4秒）
+          setTimeout(() => {
+            if (!cancelled) {
+              onConverted(photo);  // 元画像を使用
+              setStatus('done');
+              setTimeout(() => {
+                if (!cancelled) {
+                  onConnected();  // 画像生成完了後に遷移
+                }
+              }, 500);  // 完了表示を少し見せる
+            }
+          }, 3500);
         } else if (import.meta.env.VITE_GEMINI_API_KEY) {
           // Frontend direct call for dev only
           const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
