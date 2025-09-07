@@ -37,7 +37,7 @@ const UploadScreen: React.FC<UploadScreenProps> = ({ onPhotoUpload }) => {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-8 text-center rounded-[2rem] overflow-hidden">
       <h1 className="text-3xl font-bold mb-2">過去の自分と話そう</h1>
-      <p className="text-gray-400 mb-8">幼い頃の写真をアップロードして、過去の自分との対話を始めましょう。</p>
+      <p className="text-gray-400 mb-8">今の自分の写真をアップロードして、過去の自分との対話を始めましょう。</p>
       
       <input
         type="file"

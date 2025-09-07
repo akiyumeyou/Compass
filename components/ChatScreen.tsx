@@ -32,6 +32,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const ttsInProgressRef = useRef(false); // TTS重複実行防止
+  const conversationCounterRef = useRef<number>(0); // 会話順序カウンター
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
@@ -340,7 +341,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       const initialMessage: ChatMessage = {
         id: Date.now().toString(),
         sender: MessageSender.AI,
-        text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`
+        text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
+        conversationIndex: ++conversationCounterRef.current
       };
       setMessages([initialMessage]);
     }
@@ -726,6 +728,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       id: `user-${Date.now()}`,
       sender: MessageSender.USER,
       text: userInput.trim(),
+      conversationIndex: ++conversationCounterRef.current
     };
     setMessages(prev => [...prev, userMessage]);
     setUserInput('');
@@ -840,8 +843,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         id: aiMessageId,
         sender: MessageSender.AI,
         text: responseText,
+        conversationIndex: ++conversationCounterRef.current,
         ...(udemyCourseData && { udemyCourse: udemyCourseData })
       };
+      
+      // 特定の会話番号での処理実行例
+      if (messageData.conversationIndex === 5) {
+        // 会話番号5で特別な処理を実行
+        console.log('🎯 会話番号5に到達！特別な処理を実行可能');
+        // 例：より深い質問への切り替え、特別なレスポンス追加など
+      }
       
       setMessages(prev => [...prev, messageData]);
 

@@ -21,6 +21,7 @@ export interface ChatMessage {
   id: string;
   sender: MessageSender;
   text: string;
+  conversationIndex?: number;  // 会話順序番号（内部管理用）
   // === TEAM MODIFICATION START ===
   udemyCourse?: {
     id: string;
