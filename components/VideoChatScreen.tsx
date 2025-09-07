@@ -345,36 +345,35 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     
     const basePrompt = persuasionManagerRef.current.getCurrentPrompt(gender);
     
-    // Udemy講座推薦システムを追加
-    const udemyPrompt = `
+    // Udemy講座推薦システムを追加（会話の中盤以降で自然に提案）
+    const udemyPrompt = conversationCounterRef.current >= 4 ? `
 
-# 学習意欲の検出とUdemy講座推薦【重要・必須】
+# 学習意欲への自然な応援【会話中盤以降】
 
-ユーザーが以下のような学習意欲を示す場合、必ず適切なカテゴリと共に推薦タグを含めてください：
-- 「学びたい」「勉強したい」「知りたい」「教えて」「興味がある」
-- 「やってみたい」「始めたい」「挑戦したい」
-- 「おすすめの講座」「どんな講座」「いい講座」
-- スキルアップに関する話題
-- 新しい知識や技術への興味
+会話が進んできた段階（4ターン目以降）で、ユーザーが明確な学習意欲を示した場合のみ、
+自然な流れで応援し、関連する講座を紹介してください。
 
-【応答形式】
-子供らしい励ましの言葉と共に、必ず以下のタグを含めてください：
+【明確な学習意欲の例】
+- 「プログラミングを本格的に学びたい」
+- 「転職のためにスキルアップしたい」
+- 「新しいキャリアに挑戦したい」
+- 「具体的な技術（Python、React等）を身につけたい」
+
+【応答方針】
+- 子供らしい純粋な応援の言葉で励ます
+- 押し売りにならないよう、さりげなく提案する
+- ユーザーが具体的に尋ねた場合のみタグを含める
+
+【タグ形式（必要な場合のみ）】
 [UDEMY_RECOMMEND: カテゴリ名]
 
-カテゴリは以下から選択：
-- プログラミング
-- デザイン
-- ビジネス
-- 学習（一般的な学習欲求）
-- AI
-- その他
+カテゴリ：プログラミング、デザイン、ビジネス、キャリア、AI
 
-【例】
-ユーザー：「プログラミング学びたいと思ってる」
-応答：「プログラミング！すごいなぁ！大人になった${gender === 'female' ? '私' : '僕'}がコード書けるようになるんだ！応援するよ！[UDEMY_RECOMMEND: プログラミング]」
+【自然な応答例】
+ユーザー：「Pythonでプログラミングを本格的に学びたいんだ」
+応答：「わぁ！プログラミングかっこいい！大人の${gender === 'female' ? '私' : '僕'}がコード書けるようになるなんて、すごくワクワクする！きっとできるよ、応援してる！[UDEMY_RECOMMEND: プログラミング]」
 
-ユーザー：「いい講座ある？」  
-応答：「えへへ、大人の${gender === 'female' ? '私' : '僕'}が新しいこと学ぼうとしてるんだね！すごく素敵！頑張って！[UDEMY_RECOMMEND: 学習]」`;
+【重要】一般的な話題や曖昧な興味には推薦タグを含めないでください。` : '';
     
     return basePrompt + udemyPrompt;
   };
@@ -459,34 +458,41 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
             };
             console.log('✅ Udemy course selected:', recommendedCourse.title);
           }
-        } else {
-          console.log('⚠️ No UDEMY_RECOMMEND tag found, checking for fallback keywords');
+        } else if (conversationCounterRef.current >= 4) {
+          // 会話の中盤以降（4ターン目以降）でフォールバック検出を有効化
+          console.log('⚠️ No UDEMY_RECOMMEND tag found, checking for fallback keywords (conversation turn:', conversationCounterRef.current, ')');
           
-          // フォールバック: キーワードベースの検出
-          const learningKeywords = [
-            '学びたい', '勉強', '講座', 'おすすめ', '教えて',
-            'やってみたい', '始めたい', '挑戦', '興味'
+          // より具体的な学習意図を示すキーワードのみに反応
+          const strongLearningKeywords = [
+            'プログラミング学びたい', '勉強したい', '講座教えて', 'おすすめの講座',
+            'スキルアップしたい', '新しいこと始めたい', 'キャリアチェンジ'
           ];
           
-          const hasLearningIntent = learningKeywords.some(keyword => 
-            userInput.includes(keyword) || responseText.includes(keyword)
+          const hasStrongLearningIntent = strongLearningKeywords.some(keyword => 
+            userInput.includes(keyword)
           );
           
-          if (hasLearningIntent) {
-            console.log('💡 Learning intent detected via keywords, selecting course');
-            const category = userInput.includes('プログラミング') ? 'プログラミング' :
+          // 明確な学習カテゴリが含まれている場合のみ
+          const hasClearCategory = /プログラミング|Python|JavaScript|React|デザイン|AI|機械学習|起業|キャリア/.test(userInput);
+          
+          if (hasStrongLearningIntent && hasClearCategory) {
+            console.log('💡 Strong learning intent detected via keywords, selecting course');
+            const category = userInput.includes('プログラミング') || userInput.includes('Python') || userInput.includes('JavaScript') ? 'プログラミング' :
                            userInput.includes('デザイン') ? 'デザイン' :
-                           userInput.includes('AI') ? 'AI' :
-                           userInput.includes('ビジネス') ? 'ビジネス' : '学習';
+                           userInput.includes('AI') || userInput.includes('機械学習') ? 'AI' :
+                           userInput.includes('起業') || userInput.includes('ビジネス') ? 'ビジネス' :
+                           userInput.includes('キャリア') ? 'キャリア' : null;
             
-            const recommendedCourse = selectCourseByCategory(category);
-            
-            if (recommendedCourse) {
-              udemyCourseData = {
-                ...recommendedCourse,
-                thumbnail: recommendedCourse.thumbnail || undefined
-              };
-              console.log('✅ Udemy course selected via fallback:', recommendedCourse.title);
+            if (category) {
+              const recommendedCourse = selectCourseByCategory(category);
+              
+              if (recommendedCourse) {
+                udemyCourseData = {
+                  ...recommendedCourse,
+                  thumbnail: recommendedCourse.thumbnail || undefined
+                };
+                console.log('✅ Udemy course selected via fallback:', recommendedCourse.title);
+              }
             }
           }
         }

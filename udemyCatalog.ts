@@ -95,26 +95,21 @@ export type UdemyCourse = {
       for (const t of c.tags) if (q.includes(t.toLowerCase())) s += 2;
       for (const k of c.keywords) if (q.includes(k.toLowerCase())) s += 1;
       
-      // 一般的な学習キーワードでマッチしない場合のフォールバック
+      // 学習意図がある場合のフォールバック
       if (s === 0) {
-        // 学習・成長系キーワード
-        if (/学ぶ|勉強|講座|コース|学習|スキル|成長|上達|習得|身につけ|レベルアップ/.test(input)) {
-          console.log('📖 Matched learning keywords, setting score to 1');
-          s = 1;
-        }
         // プログラミング系キーワード
-        else if (/プログラミング|コード|開発|アプリ|ウェブ|web|python|javascript|react/.test(input)) {
+        if (/プログラミング|python|javascript|react|コード|開発|アプリ/.test(input.toLowerCase())) {
           console.log('💻 Matched programming keywords, setting score to 1');
           s = 1;
         }
         // キャリア・ビジネス系キーワード
-        else if (/キャリア|転職|働き方|起業|ビジネス|戦略|目標|夢/.test(input)) {
+        else if (/キャリア|転職|働き方|起業|ビジネス|スキル/.test(input)) {
           console.log('💼 Matched career keywords, setting score to 1');
           s = 1;
         }
-        // テスト・デバッグ系キーワード
-        else if (/テスト|test|デバッグ|debug|問題解決|解決/.test(input)) {
-          console.log('🧪 Matched test keywords, setting score to 1');
+        // 学習系キーワード
+        else if (/学びたい|勉強|習得|身につけ|マスター/.test(input)) {
+          console.log('📚 Matched learning keywords, setting score to 1');
           s = 1;
         }
       }
@@ -128,13 +123,13 @@ export type UdemyCourse = {
     
     console.log('📊 Scored courses:', scoredCourses.map(sc => ({ title: sc.c.title, score: sc.s })));
     
-    // スコアが0の場合は、ランダムにいくつかの講座を返す
+    // スコアが0の場合は、空の配列を返す
     if (scoredCourses.length === 0) {
-      console.log('🎲 No scored courses, returning random courses');
-      const shuffled = [...UDEMY_COURSES].sort(() => Math.random() - 0.5);
-      return shuffled.slice(0, Math.min(topN, 3));
+      console.log('❌ No matching courses found, returning empty array');
+      return [];
     }
     
+    // スコアが高い順に返す（スコア1でもOK）
     const result = scoredCourses.slice(0, topN).map(x => x.c);
     console.log('✅ Final recommended courses:', result.map(c => c.title));
     return result;
@@ -152,7 +147,7 @@ export type UdemyCourse = {
       
       // 学習・成長系
       '学びたい', '勉強したい', '身につけたい', 'スキルアップ', '成長したい', 
-      '上達したい', '向上させたい', 'レベルアップ', '習得したい', '学ぶ', '勉強',
+      '上達したい', '向上させたい', 'レベルアップ', '習得したい',
       
       // 前向き・未来系
       '新しい', '始めたい', 'スタートしたい', '取り組みたい', '実現したい',
@@ -160,10 +155,7 @@ export type UdemyCourse = {
       
       // 感情系（ポジティブ）
       'ワクワク', 'わくわく', '楽しそう', '面白そう', '興味深い', 'いいな',
-      '素敵', '憧れ', 'かっこいい', 'すごい', '感動', '楽しい', '面白い',
-      
-      // 簡単なテスト用キーワード
-      'テスト', 'test', 'Udemy', 'udemy', '講座'
+      '素敵', '憧れ', 'かっこいい', 'すごい', '感動', '楽しい', '面白い'
     ];
     
     console.log('📝 Available keywords:', positiveKeywords);
