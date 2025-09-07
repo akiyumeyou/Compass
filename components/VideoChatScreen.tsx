@@ -233,7 +233,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         }));
 
         const response = await openai.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4o',
           messages: [
             { role: 'system', content: systemInstruction },
             ...conversationHistory,

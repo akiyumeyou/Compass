@@ -733,18 +733,38 @@ ${conversationStageContext}
           dangerouslyAllowBrowser: true
         });
 
+        // 会話履歴を準備（並列処理のため先に準備）
+        const conversationHistory = messages.slice(-3).map(msg => 
+          `${msg.sender === MessageSender.AI ? '子供' : '大人'}: ${msg.text.substring(0, 50)}...`
+        ).join('\n');
+        
+        // 統合プロンプトで1回の生成で履歴を考慮
+        const integratedPrompt = `
+${systemInstruction}
+
+【直近の会話】
+${conversationHistory}
+
+【重要な指示】
+- 上記の会話履歴を踏まえて応答
+- 同じ話題の繰り返しを避ける
+- 会話番号${currentConversationIndex}に適した内容
+- 必ず150文字以内で完結
+${contextualHint}`;
+
+        console.log('Generating context-aware response...');
         const response = await openai.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4o',  // 感情表現に優れた最新モデル
           messages: [
-            { role: 'system', content: systemInstruction + '\n\n' + contextualHint },
+            { role: 'system', content: integratedPrompt },
             { role: 'user', content: userMessage.text }
           ],
-          max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
-          temperature: 0.9
+          max_tokens: 300,  // 削減して高速化
+          temperature: 0.8
         });
         
-        responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
-        console.log('OpenAI response to user message:', responseText);
+        responseText = response.choices[0]?.message?.content || 'ごめん、よく聞こえなかった！';
+        console.log('Response generated:', responseText);
       } else {
         // 本番環境: APIエンドポイント経由
         console.log('Production mode: Sending message to API endpoint');
