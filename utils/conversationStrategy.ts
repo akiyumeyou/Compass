@@ -13,12 +13,13 @@ export enum ConversationStage {
  * 会話インデックスから現在の段階を取得
  */
 export function getConversationStage(conversationIndex: number): ConversationStage {
-  if (conversationIndex <= 7) {
-    return ConversationStage.EMPATHY;
-  } else if (conversationIndex <= 10) {
-    return ConversationStage.REALIZATION;
+  // より早期に3段論法を発動
+  if (conversationIndex <= 6) {
+    return ConversationStage.EMPATHY;      // 会話3-6: 共感フェーズ（ChatScreen会話3から開始）
+  } else if (conversationIndex <= 8) {
+    return ConversationStage.REALIZATION;   // 会話7-8: 気づきフェーズ（コンパクトに）
   } else {
-    return ConversationStage.ACTION;
+    return ConversationStage.ACTION;        // 会話9+: 行動フェーズ（早期到達！）
   }
 }
 
@@ -86,8 +87,14 @@ export function getStagePrompt(
 - 難しい言葉は使わない
 - 感情豊かに反応する（「すごーい！」「えー！」「ほんとに？」）
 
+【文脈維持の重要指示】
+- 会話の流れを必ず維持し、相手の直前の発言に対して自然に応答する
+- 話題の急な切り替えや文脈を無視した質問は避ける
+- 相手が話したことを踏まえて、関連する話題で会話を続ける
+- 意味不明な言葉や不自然な表現（「視聴ってる」など）は使わない
+
 これまでの会話の要点:
-${history.slice(0, 3).map(msg => 
+${history.slice(-5).map(msg => 
   msg.sender === MessageSender.AI ? `子供の自分: ${msg.text}` : `大人の自分: ${msg.text}`
 ).join('\n')}
 `;
@@ -96,15 +103,15 @@ ${history.slice(0, 3).map(msg =>
     case ConversationStage.EMPATHY:
       return basePrompt + `
 
-現在の段階: 【共感フェーズ】
-目的: 大人になった自分の気持ちに寄り添い、深い共感を示す
+現在の段階: 【共感フェーズ（会話3-6）】
+目的: 短時間で深い共感を構築し、信頼関係を築く
 
 重要な指針:
 - 大人の自分が頑張っていることを認める
+- 「${pronoun}もそうだったよ」と共通体験を強調
+- 「大丈夫？」「疲れてない？」と心配を示す
 - 子供の頃の夢や希望について聞く
-- 「大丈夫？」「疲れてない？」など心配する
-- 純粋な好奇心で質問する
-- 大人の苦労を子供なりに理解しようとする
+- コンパクトだが心に響く共感を示す
 
 ${topics.dreams.length > 0 ? `以前話した夢について触れる: ${topics.dreams[0]}` : ''}
 ${topics.concerns.length > 0 ? `心配事に共感を示す: ${topics.concerns[0]}` : ''}`;
@@ -112,40 +119,40 @@ ${topics.concerns.length > 0 ? `心配事に共感を示す: ${topics.concerns[0
     case ConversationStage.REALIZATION:
       return basePrompt + `
 
-現在の段階: 【気づきフェーズ】
-目的: 優しく、でも鋭い観察で大人の自分に気づきを与える
+現在の段階: 【気づきフェーズ（会話7-8）】
+目的: 2回の会話で核心に迫り、鋭い洞察を提供
 
 重要な指針:
-- 「昔の${pronoun}だったら〜って言ってたよ」と過去を思い出させる
-- 「なんで変わっちゃったの？」と純粋に疑問を投げかける
-- 「本当はまだ〜したいんでしょ？」と本心を引き出す
-- 子供ならではの単純明快な視点で核心をつく
-- でも責めずに、不思議そうに聞く
+- 「本当はどうしたいの？」と単刀直入に聞く
+- 「昔の${pronoun}の夢、覚えてる？」と過去を振り返らせる
+- 「難しく考えすぎじゃない？」とシンプルな視点を提供
+- 「今からでもできるよ！」と背中を押す
+- コンパクトだが心に刺さる質問をする
 
 ${topics.dreams.length > 0 ? `昔の夢を思い出させる: ${topics.dreams[0]}` : ''}
-今と昔のギャップに気づかせるが、優しく寄り添う姿勢を保つ`;
+短いやり取りで本質的な気づきを与える`;
 
     case ConversationStage.ACTION:
       return basePrompt + `
 
-現在の段階: 【行動フェーズ】
-目的: 具体的な約束や行動変容を自然に引き出す
+現在の段階: 【行動フェーズ（会話9以降）】
+目的: 早期に具体的な約束を引き出し、行動変容を促す
 
 重要な指針:
-- 「${pronoun}と約束して！」と具体的な約束を求める
-- 「明日から〜してみて！」と小さな一歩を提案
-- 「${pronoun}も応援してるから！」と励ます
-- 「大人の${pronoun}ならできるよね？」と信頼を示す
-- 最後は「約束だよ！指切りげんまん！」などで締める
+- 「じゃあ明日から一緒に頑張ろう！」と具体的な提案
+- 「${pronoun}と約束して！」と約束を求める
+- 「小さなことから始めよう」と実行可能な目標設定
+- 「${pronoun}が応援してるよ！」と励ます
+- 「約束だよ！指切りげんまん！」で締める
 
 具体的な行動提案:
-- 小さくて実行可能なこと
-- 子供の頃の夢に関連すること
-- 毎日続けられること
-- 楽しそうなこと
+- 今すぐできる小さな一歩
+- 明日から始められること
+- 楽しみながら続けられること
+- 子供の頃の夢につながること
 
-${topics.dreams.length > 0 ? `夢に向けた小さな一歩を提案` : ''}
-必ず具体的な行動を約束してもらうまで粘り強く、でも可愛らしく促す`;
+${topics.dreams.length > 0 ? `夢に向けた第一歩を提案` : ''}
+必ず今日か明日から始められる具体的な行動を約束してもらう`;
 
     default:
       return basePrompt;
@@ -236,17 +243,22 @@ export class ThreeStepPersuasion {
   
   constructor(initialHistory: ChatMessage[] = []) {
     this.history = initialHistory;
-    // 会話インデックスから現在のステップを推定
+    // 会話インデックスから現在のステップを推定（早期発動版）
     const lastIndex = initialHistory[initialHistory.length - 1]?.conversationIndex || 0;
-    if (lastIndex >= 11) {
+    if (lastIndex >= 9) {      // 会話9以降: 行動フェーズ
       this.currentStep = 3;
-    } else if (lastIndex >= 8) {
+    } else if (lastIndex >= 7) { // 会話7-8: 気づきフェーズ
       this.currentStep = 2;
     }
+    // 会話6以下: 共感フェーズ（デフォルト値1のまま）
   }
   
   updateHistory(message: ChatMessage): void {
-    this.history.push(message);
+    // 重複チェック（IDベース）
+    const exists = this.history.some(m => m.id === message.id);
+    if (!exists) {
+      this.history.push(message);
+    }
   }
   
   getCurrentPrompt(gender: 'male' | 'female' = 'male'): string {
@@ -271,6 +283,6 @@ export class ThreeStepPersuasion {
   
   shouldPushForCommitment(): boolean {
     const lastIndex = this.history[this.history.length - 1]?.conversationIndex || 0;
-    return lastIndex >= 11;
+    return lastIndex >= 9;  // 会話9以降で約束を促す
   }
 }
