@@ -9,7 +9,7 @@ import {
   generateInsightfulQuestion 
 } from '../utils/coldReadingPhrases';
 import { getRandomInitialMessage } from '../utils/initialMessages';
-import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, UdemyCourse } from '../udemyCatalog';
+import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, selectCourseByCategory, UdemyCourse } from '../udemyCatalog';
 import RealtimeCall from './RealtimeCall';
 
 interface ChatScreenProps {
@@ -65,7 +65,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 - 返答は短く、会話調で、簡単な言葉を使う
 - 時々子供らしい驚きや表現を加える
 - 絶対にキャラクターを崩さない
-- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
+- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる
+
+# 学習意欲の検出とUdemy講座推薦
+ユーザーのメッセージに以下のような要素が含まれる場合、適切な学習カテゴリを判断してください：
+- 学習意欲（学びたい、勉強したい、身につけたい、知りたい等）
+- 成長願望（成長したい、変わりたい、頑張りたい、挑戦したい等）
+- スキル習得希望（プログラミング、デザイン、ビジネス、キャリア等）
+- 自己改善（習慣、生産性、目標達成等）
+
+上記が検出された場合、通常の返答の最後に必ず以下の形式でタグを追加してください：
+[UDEMY_RECOMMEND: カテゴリ名]
+
+カテゴリは以下から選択：
+- プログラミング（プログラミング、コード、アプリ開発等の話題）
+- キャリア（転職、キャリア、仕事の悩み等）
+- 習慣（習慣化、継続、三日坊主等）
+- デザイン（デザイン思考、アイデア、創造性等）
+- 起業（起業、ビジネス、戦略等）
+- 自己理解（自分探し、生きがい、目的等）
+- 成長（一般的な成長願望）
+- 学習（一般的な学習意欲）
+
+例：「プログラミング学びたいと思ってる」→ 通常の返答 + [UDEMY_RECOMMEND: プログラミング]`;
 
   // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
   useEffect(() => {
@@ -787,38 +809,47 @@ ${contextualHint}`;
         responseText = data.response;
       }
 
-      // Udemy案内機能
-      console.log('🎯 Starting Udemy detection for:', userMessage.text);
-      const hasPositiveKeywords = detectPositiveKeywords(userMessage.text);
-      console.log('🔍 Positive keywords detected:', hasPositiveKeywords);
+      // LLMベースのUdemy推薦検出
+      console.log('🎯 Checking AI response for Udemy recommendations');
+      const udemyMatch = responseText.match(/\[UDEMY_RECOMMEND:\s*([^\]]+)\]/);
       
-      if (hasPositiveKeywords) {
-        console.log('✅ Positive keywords found, getting course recommendation...');
-        const recommendedCourse = getUdemyCourseWithThumbnail(userMessage.text);
-        console.log('📚 Recommended course:', recommendedCourse);
+      if (udemyMatch) {
+        const category = udemyMatch[1].trim();
+        console.log('✅ LLM detected learning intent, category:', category);
+        
+        // タグを削除
+        responseText = responseText.replace(udemyMatch[0], '').trim();
+        
+        // カテゴリに基づいて講座を選択
+        const recommendedCourse = selectCourseByCategory(category);
+        console.log('📚 Selected course:', recommendedCourse);
         
         if (recommendedCourse) {
-          console.log('🎓 Course found, generating suggestion...');
-          const suggestion = generateUdemySuggestion(userMessage.text, [recommendedCourse]);
-          console.log('💬 Generated suggestion:', suggestion);
+          // 子供らしい推薦メッセージを生成
+          const childLikeSuggestions = [
+            'あ、そうそう！そういえばね、',
+            'それで思い出したんだけど、',
+            'あ！そういうのに興味あるなら、',
+            'わー、それってすごくいいね！あのね、',
+            'うんうん！がんばって！あ、そうだ、'
+          ];
           
-          if (suggestion) {
-            responseText += `\n\n${suggestion}`;
-            udemyCourseData = {
-              id: recommendedCourse.id,
-              title: recommendedCourse.title,
-              url: recommendedCourse.url,
-              thumbnail: recommendedCourse.thumbnail
-            };
-            console.log('✅ Udemy suggestion added to response');
-          } else {
-            console.log('❌ No suggestion generated');
-          }
+          const randomIntro = childLikeSuggestions[Math.floor(Math.random() * childLikeSuggestions.length)];
+          const suggestion = `${randomIntro}こんなのがあるって知ってた？「${recommendedCourse.title}」っていうのがあるんだって！なんか君にぴったりな感じがするよ〜。気になったら見てみて！`;
+          
+          responseText += `\n\n${suggestion}`;
+          udemyCourseData = {
+            id: recommendedCourse.id,
+            title: recommendedCourse.title,
+            url: recommendedCourse.url,
+            thumbnail: recommendedCourse.thumbnail
+          };
+          console.log('✅ Udemy suggestion added to response');
         } else {
-          console.log('❌ No course recommended');
+          console.log('❌ No course found for category:', category);
         }
       } else {
-        console.log('❌ No positive keywords detected');
+        console.log('ℹ️ No learning intent detected by LLM');
       }
       
       const aiMessageId = `ai-${Date.now()}`;
