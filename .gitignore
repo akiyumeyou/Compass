@@ -39,3 +39,12 @@ secrets/
 
 # System specifications (auto-generated)
 docs/system-specs/
+
+# Test files
+test/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+test-*.json
+test-*.html
