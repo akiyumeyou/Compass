@@ -73,6 +73,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const lastSpeakTimeRef = useRef<number>(0);
   const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
   const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
@@ -97,6 +98,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       }
       lastSpokenTextRef.current = text;
 
+      // 最後の発話時刻を記録
+      lastSpeakTimeRef.current = Date.now();
+
       // 既存の音声を停止
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -110,10 +114,10 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         videoStopTimeoutRef.current = null;
       }
       
-      // ビデオを音声より早く開始（口の動きが先行）
-      playVideo();
-
       const isDevelopment = import.meta.env.DEV;
+      
+      // 音声を先に準備
+      let audio: HTMLAudioElement | null = null;
       
       if (isDevelopment) {
         const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -144,7 +148,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+        audio = new Audio(audioUrl);
         
         // 現在の音声として設定
         currentAudioRef.current = audio;
@@ -158,13 +162,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           lastSpokenTextRef.current = '';
           // 音声完了後もビデオを少し継続（自然な終了）
           videoStopTimeoutRef.current = setTimeout(() => {
-            stopVideo();
+            // 会話が2秒以上間隔が空いたらビデオを停止
+            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
+            if (timeSinceLastSpeak >= 2000) {
+              console.log('Stopping video due to conversation gap');
+              stopVideo();
+            }
           }, VIDEO_TRAIL_TIME);
         };
-        
-        // ビデオ開始後、少し遅延して音声を再生
-        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
-        await audio.play();
       } else {
         // 本番環境: APIルート経由でTTS
         const response = await fetch('/api/tts', {
@@ -179,7 +184,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+        audio = new Audio(audioUrl);
         
         // 現在の音声として設定
         currentAudioRef.current = audio;
@@ -193,12 +198,20 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           lastSpokenTextRef.current = '';
           // 音声完了後もビデオを少し継続（自然な終了）
           videoStopTimeoutRef.current = setTimeout(() => {
-            stopVideo();
+            // 会話が2秒以上間隔が空いたらビデオを停止
+            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
+            if (timeSinceLastSpeak >= 2000) {
+              console.log('Stopping video due to conversation gap');
+              stopVideo();
+            }
           }, VIDEO_TRAIL_TIME);
         };
-        
-        // ビデオ開始後、少し遅延して音声を再生
-        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
+      }
+      
+      // 音声準備完了後、ビデオと音声を同時に開始
+      if (audio) {
+        console.log('Starting video and audio simultaneously');
+        playVideo();
         await audio.play();
       }
     } catch (error) {
@@ -249,7 +262,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         setMessages(prev => [...prev, newMessage]);
         // 新しいメッセージを音声で読み上げる
         speakText(newMessage.text).catch(error => console.error('TTS error:', error));
-      }, 1000); // 1秒後に新メッセージ
+      }, 500); // 0.5秒後に新メッセージ（高速化）
     }
   }, [initialHistory, gender]);
 
@@ -345,6 +358,10 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   // メッセージ送信処理
   const handleSendMessage = async () => {
     if (!userInput.trim() || isLoading) return;
+
+    // ユーザーが入力したらビデオを停止
+    console.log('User input detected, stopping video');
+    stopVideo();
 
     const newUserMessage: ChatMessage = {
       id: `user-${Date.now()}`,
