@@ -86,7 +86,7 @@ const UploadScreen: React.FC<UploadScreenProps> = ({ onPhotoUpload }) => {
       </div>
       
       {/* アップロードボタン */}
-      <div className="relative z-10 w-full">
+      <div className="relative z-10 w-full mb-8">
         <input
           type="file"
           ref={fileInputRef}
@@ -117,11 +117,6 @@ const UploadScreen: React.FC<UploadScreenProps> = ({ onPhotoUpload }) => {
         </button>
 
         {error && <p className="text-red-500 mt-4">{error}</p>}
-      </div>
-
-      {/* フッター */}
-      <div className="relative z-10 text-xs text-gray-500">
-        <p>あなたの写真はローカルで処理され、サーバーには保存されません。</p>
       </div>
     </div>
   );
