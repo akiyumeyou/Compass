@@ -73,11 +73,11 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const lastSpeakTimeRef = useRef<number>(0); // 最後に音声を再生した時刻
   const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
   const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
   const videoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null); // ビデオ停止タイマー
-  const lastSpeakTimeRef = useRef<number>(0); // 最後に音声を再生した時刻
   
   // タイミング調整用の定数（ミリ秒）
   const VIDEO_LEAD_TIME = 20; // ビデオをわずかに先行させる（口の動きが自然に見える）
@@ -98,6 +98,9 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       }
       lastSpokenTextRef.current = text;
 
+      // 最後の発話時刻を記録
+      lastSpeakTimeRef.current = Date.now();
+
       // 既存の音声を停止
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -113,18 +116,13 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
       
       console.log('🎤 TTS処理開始:', new Date().toISOString());
       
-      // 会話間隔をチェック（2秒以上空いていたら一旦停止）
-      const now = Date.now();
-      const timeSinceLastSpeak = now - lastSpeakTimeRef.current;
-      if (lastSpeakTimeRef.current > 0 && timeSinceLastSpeak > 2000) {
-        console.log(`⏸️ ${timeSinceLastSpeak}ms経過したためビデオを一旦停止`);
-        stopVideo();
-        // 少し待ってから再開（自然な動作のため）
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      lastSpeakTimeRef.current = now;
+      // 最後の発話時刻を記録
+      lastSpeakTimeRef.current = Date.now();
 
       const isDevelopment = import.meta.env.DEV;
+      
+      // 音声を先に準備
+      let audio: HTMLAudioElement | null = null;
       
       if (isDevelopment) {
         const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -155,7 +153,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+        audio = new Audio(audioUrl);
         
         console.log('🎵 音声データ準備完了:', new Date().toISOString());
         
@@ -171,20 +169,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           lastSpokenTextRef.current = '';
           // 音声完了後もビデオを少し継続（自然な終了）
           videoStopTimeoutRef.current = setTimeout(() => {
-            stopVideo();
+            // 会話が2秒以上間隔が空いたらビデオを停止
+            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
+            if (timeSinceLastSpeak >= 2000) {
+              console.log('Stopping video due to conversation gap');
+              stopVideo();
+            }
           }, VIDEO_TRAIL_TIME);
         };
-        
-        // 音声準備完了後、ビデオと音声をほぼ同時に開始
-        console.log('🎬 ビデオ再生開始:', new Date().toISOString());
-        playVideo();
-        
-        // ビデオ開始後、わずかに遅延して音声再生（ビデオを先行させる）
-        if (VIDEO_LEAD_TIME > 0) {
-          await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
-        }
-        console.log('🎵 音声再生開始:', new Date().toISOString());
-        await audio.play();
       } else {
         // 本番環境: APIルート経由でTTS
         const response = await fetch('/api/tts', {
@@ -199,7 +191,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+        audio = new Audio(audioUrl);
         
         console.log('🎵 音声データ準備完了:', new Date().toISOString());
         
@@ -215,18 +207,20 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           lastSpokenTextRef.current = '';
           // 音声完了後もビデオを少し継続（自然な終了）
           videoStopTimeoutRef.current = setTimeout(() => {
-            stopVideo();
+            // 会話が2秒以上間隔が空いたらビデオを停止
+            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
+            if (timeSinceLastSpeak >= 2000) {
+              console.log('Stopping video due to conversation gap');
+              stopVideo();
+            }
           }, VIDEO_TRAIL_TIME);
         };
-        
-        // 音声準備完了後、ビデオと音声をほぼ同時に開始
+      }
+      
+      // 音声準備完了後、ビデオと音声を同時に開始
+      if (audio) {
         console.log('🎬 ビデオ再生開始:', new Date().toISOString());
         playVideo();
-        
-        // ビデオ開始後、わずかに遅延して音声再生（ビデオを先行させる）
-        if (VIDEO_LEAD_TIME > 0) {
-          await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
-        }
         console.log('🎵 音声再生開始:', new Date().toISOString());
         await audio.play();
       }
