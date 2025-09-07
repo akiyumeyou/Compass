@@ -9,7 +9,6 @@ import {
   generateInsightfulQuestion 
 } from '../utils/coldReadingPhrases';
 import { getRandomInitialMessage } from '../utils/initialMessages';
-import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, selectCourseByCategory, UdemyCourse } from '../udemyCatalog';
 import RealtimeCall from './RealtimeCall';
 
 interface ChatScreenProps {
@@ -65,29 +64,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 - 返答は短く、会話調で、簡単な言葉を使う
 - 時々子供らしい驚きや表現を加える
 - 絶対にキャラクターを崩さない
-- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる
-
-# 学習意欲の検出とUdemy講座推薦
-ユーザーのメッセージに以下のような要素が含まれる場合、適切な学習カテゴリを判断してください：
-- 学習意欲（学びたい、勉強したい、身につけたい、知りたい等）
-- 成長願望（成長したい、変わりたい、頑張りたい、挑戦したい等）
-- スキル習得希望（プログラミング、デザイン、ビジネス、キャリア等）
-- 自己改善（習慣、生産性、目標達成等）
-
-上記が検出された場合、通常の返答の最後に必ず以下の形式でタグを追加してください：
-[UDEMY_RECOMMEND: カテゴリ名]
-
-カテゴリは以下から選択：
-- プログラミング（プログラミング、コード、アプリ開発等の話題）
-- キャリア（転職、キャリア、仕事の悩み等）
-- 習慣（習慣化、継続、三日坊主等）
-- デザイン（デザイン思考、アイデア、創造性等）
-- 起業（起業、ビジネス、戦略等）
-- 自己理解（自分探し、生きがい、目的等）
-- 成長（一般的な成長願望）
-- 学習（一般的な学習意欲）
-
-例：「プログラミング学びたいと思ってる」→ 通常の返答 + [UDEMY_RECOMMEND: プログラミング]`;
+- **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
   // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
   useEffect(() => {
@@ -347,52 +324,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     });
   };
 
-  // Udemy講座カード表示コンポーネント（エラーハンドリング付き）
-  const UdemyCourseCard: React.FC<{ course: UdemyCourse }> = ({ course }) => {
-    const [imageError, setImageError] = useState(false);
-    
-    const handleImageError = () => {
-      setImageError(true);
-    };
-
-    return (
-      <div className="mt-3 bg-gray-800 rounded-lg overflow-hidden border border-gray-600 hover:border-gray-500 transition-colors">
-        <a
-          href={course.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block hover:bg-gray-750 transition-colors"
-        >
-          <div className="flex items-start gap-3 p-3">
-            <div className="w-16 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-700">
-              {course.thumbnail && !imageError ? (
-                <img
-                  src={course.thumbnail}
-                  alt={course.title}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  onError={handleImageError}
-                />
-              ) : (
-                <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-medium text-white mb-1 leading-tight">
-                {course.title}
-              </h4>
-              <p className="text-xs text-gray-400">Udemy講座</p>
-            </div>
-          </div>
-        </a>
-      </div>
-    );
-  };
-  // === TEAM MODIFICATION END ===
 
   // Realtimeモードの切り替え
   const toggleRealtimeMode = useCallback(() => {
@@ -740,7 +671,6 @@ ${conversationStageContext}
       // 開発環境かどうかを判定
       const isDevelopment = import.meta.env.DEV;
       let responseText = '';
-      let udemyCourseData = null;
       
       if (isDevelopment) {
         // 開発環境: 直接OpenAI APIを呼び出し
@@ -809,56 +739,13 @@ ${contextualHint}`;
         responseText = data.response;
       }
 
-      // LLMベースのUdemy推薦検出
-      console.log('🎯 Checking AI response for Udemy recommendations');
-      const udemyMatch = responseText.match(/\[UDEMY_RECOMMEND:\s*([^\]]+)\]/);
-      
-      if (udemyMatch) {
-        const category = udemyMatch[1].trim();
-        console.log('✅ LLM detected learning intent, category:', category);
-        
-        // タグを削除
-        responseText = responseText.replace(udemyMatch[0], '').trim();
-        
-        // カテゴリに基づいて講座を選択
-        const recommendedCourse = selectCourseByCategory(category);
-        console.log('📚 Selected course:', recommendedCourse);
-        
-        if (recommendedCourse) {
-          // 子供らしい推薦メッセージを生成
-          const childLikeSuggestions = [
-            'あ、そうそう！そういえばね、',
-            'それで思い出したんだけど、',
-            'あ！そういうのに興味あるなら、',
-            'わー、それってすごくいいね！あのね、',
-            'うんうん！がんばって！あ、そうだ、'
-          ];
-          
-          const randomIntro = childLikeSuggestions[Math.floor(Math.random() * childLikeSuggestions.length)];
-          const suggestion = `${randomIntro}こんなのがあるって知ってた？「${recommendedCourse.title}」っていうのがあるんだって！なんか君にぴったりな感じがするよ〜。気になったら見てみて！`;
-          
-          responseText += `\n\n${suggestion}`;
-          udemyCourseData = {
-            id: recommendedCourse.id,
-            title: recommendedCourse.title,
-            url: recommendedCourse.url,
-            thumbnail: recommendedCourse.thumbnail
-          };
-          console.log('✅ Udemy suggestion added to response');
-        } else {
-          console.log('❌ No course found for category:', category);
-        }
-      } else {
-        console.log('ℹ️ No learning intent detected by LLM');
-      }
       
       const aiMessageId = `ai-${Date.now()}`;
       const messageData: ChatMessage = {
         id: aiMessageId,
         sender: MessageSender.AI,
         text: responseText,
-        conversationIndex: ++conversationCounterRef.current,
-        ...(udemyCourseData && { udemyCourse: udemyCourseData })
+        conversationIndex: ++conversationCounterRef.current
       };
       console.log('📝 AI response message with conversationIndex:', messageData.conversationIndex);
       
@@ -978,10 +865,6 @@ ${contextualHint}`;
               <p className="text-sm break-words whitespace-pre-wrap">
                 {renderMessageWithLinks(msg.text)}
               </p>
-              {/* Udemy講座カード表示 */}
-              {msg.udemyCourse && (
-                <UdemyCourseCard course={msg.udemyCourse} />
-              )}
               {/* === TEAM MODIFICATION END === */}
             </div>
           </div>
