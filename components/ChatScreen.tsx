@@ -62,10 +62,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     // 会話ID 3のAIメッセージで着信画面へ遷移
     if (messages.length > 0 && onFirstChatComplete) {
       const lastMessage = messages[messages.length - 1];
+      
+      // デバッグログ追加
+      console.log('🔍 Transition check:', {
+        messageCount: messages.length,
+        lastMessageSender: lastMessage.sender,
+        conversationIndex: lastMessage.conversationIndex,
+        shouldTransition: lastMessage.sender === MessageSender.AI && lastMessage.conversationIndex === 3
+      });
+      
       // conversationIndex === 3 かつ AIからのメッセージの場合
       if (lastMessage.sender === MessageSender.AI && 
           lastMessage.conversationIndex === 3) {
+        console.log('✅ Triggering transition to INCOMING_CALL in 3 seconds...');
         const timer = setTimeout(() => {
+          console.log('🚀 Executing transition to INCOMING_CALL');
           onFirstChatComplete(messages);
         }, 3000); // 3秒後に遷移
         return () => clearTimeout(timer);
@@ -272,6 +283,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
           conversationIndex: ++conversationCounterRef.current
         };
+        console.log('📝 Initial AI message with conversationIndex:', initialMessage.conversationIndex);
         setMessages([initialMessage]);
       }, 800); // 0.8秒後に表示（画面が落ち着いてから）
       
@@ -661,6 +673,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       text: userInput.trim(),
       conversationIndex: ++conversationCounterRef.current
     };
+    console.log('📝 User message with conversationIndex:', userMessage.conversationIndex);
     setMessages(prev => [...prev, userMessage]);
     setUserInput('');
     setIsLoading(true);
@@ -777,6 +790,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         conversationIndex: ++conversationCounterRef.current,
         ...(udemyCourseData && { udemyCourse: udemyCourseData })
       };
+      console.log('📝 AI response message with conversationIndex:', messageData.conversationIndex);
       
       // 特定の会話番号での処理実行例
       if (messageData.conversationIndex === 5) {
