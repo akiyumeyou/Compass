@@ -74,11 +74,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       // conversationIndex === 3 かつ AIからのメッセージの場合
       if (lastMessage.sender === MessageSender.AI && 
           lastMessage.conversationIndex === 3) {
-        console.log('✅ Triggering transition to INCOMING_CALL in 5 seconds...');
+        console.log('✅ Triggering transition to INCOMING_CALL in 7 seconds...');
         const timer = setTimeout(() => {
           console.log('🚀 Executing transition to INCOMING_CALL');
           onFirstChatComplete(messages);
-        }, 5000); // 5秒後に遷移
+        }, 7000); // 7秒後に遷移
         return () => clearTimeout(timer);
       }
     }
