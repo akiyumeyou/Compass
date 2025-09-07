@@ -62,6 +62,7 @@ const UdemyCourseCard: React.FC<{ course: UdemyCourse }> = ({ course }) => {
     </div>
   );
 };
+
 export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCall, initialHistory = [], gender = 'male' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(initialHistory);
   const [userInput, setUserInput] = useState('');
@@ -77,7 +78,6 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
   const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
-  const videoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null); // ビデオ停止タイマー
   
   // タイミング調整用の定数（ミリ秒）
   const VIDEO_LEAD_TIME = 20; // ビデオをわずかに先行させる（口の動きが自然に見える）
@@ -108,16 +108,10 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         currentAudioRef.current = null;
       }
       
-      // ビデオ停止タイマーをクリア
-      if (videoStopTimeoutRef.current) {
-        clearTimeout(videoStopTimeoutRef.current);
-        videoStopTimeoutRef.current = null;
-      }
-      
       console.log('🎤 TTS処理開始:', new Date().toISOString());
       
-      // 最後の発話時刻を記録
-      lastSpeakTimeRef.current = Date.now();
+      // ビデオを音声より早く開始（口の動きが先行）
+      playVideo();
 
       const isDevelopment = import.meta.env.DEV;
       
@@ -167,15 +161,11 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声完了後もビデオを少し継続（自然な終了）
-          videoStopTimeoutRef.current = setTimeout(() => {
-            // 会話が2秒以上間隔が空いたらビデオを停止
-            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
-            if (timeSinceLastSpeak >= 2000) {
-              console.log('Stopping video due to conversation gap');
-              stopVideo();
-            }
-          }, VIDEO_TRAIL_TIME);
+          // 音声終了後、少し遅延させて動画を停止（自然な終了）
+          setTimeout(() => {
+            console.log('Stopping video after audio ended');
+            stopVideo();
+          }, 500); // 0.5秒後に停止
         };
       } else {
         // 本番環境: APIルート経由でTTS
@@ -205,22 +195,16 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声完了後もビデオを少し継続（自然な終了）
-          videoStopTimeoutRef.current = setTimeout(() => {
-            // 会話が2秒以上間隔が空いたらビデオを停止
-            const timeSinceLastSpeak = Date.now() - lastSpeakTimeRef.current;
-            if (timeSinceLastSpeak >= 2000) {
-              console.log('Stopping video due to conversation gap');
-              stopVideo();
-            }
-          }, VIDEO_TRAIL_TIME);
+          // 音声終了後、少し遅延させて動画を停止（自然な終了）
+          setTimeout(() => {
+            console.log('Stopping video after audio ended');
+            stopVideo();
+          }, 500); // 0.5秒後に停止
         };
       }
       
-      // 音声準備完了後、ビデオと音声を同時に開始
+      // 音声準備完了後、音声を再生
       if (audio) {
-        console.log('🎬 ビデオ再生開始:', new Date().toISOString());
-        playVideo();
         console.log('🎵 音声再生開始:', new Date().toISOString());
         await audio.play();
       }
@@ -636,6 +620,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           loop
           playsInline
           preload="auto"
+          onEnded={handleVideoEnded}
           style={{ 
             display: 'block',
             position: 'absolute',
