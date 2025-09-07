@@ -3,6 +3,9 @@ import { MessageSquare, PhoneOff, Send } from 'lucide-react';
 import { ChatMessage, MessageSender } from '../types';
 import OpenAI from 'openai';
 import { getRandomInitialMessage } from '../utils/initialMessages';
+import { generateVideoCallStartMessage } from '../utils/videoCallMessages';
+import { ThreeStepPersuasion, getConversationStage, analyzeConversationContext } from '../utils/conversationStrategy';
+import { selectCourseByCategory, UdemyCourse } from '../udemyCatalog';
 
 interface VideoChatScreenProps {
   photo: string;
@@ -11,6 +14,54 @@ interface VideoChatScreenProps {
   gender?: 'male' | 'female';
 }
 
+// Udemy講座カード表示コンポーネント
+const UdemyCourseCard: React.FC<{ course: UdemyCourse }> = ({ course }) => {
+  const [imageError, setImageError] = useState(false);
+  
+  return (
+    <div className="mb-4 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl p-4 border border-blue-400/30">
+      <div className="flex items-start gap-3">
+        {/* サムネイル画像 */}
+        <div className="flex-shrink-0 w-24 h-16 bg-gray-700 rounded-lg overflow-hidden">
+          {!imageError && course.thumbnail ? (
+            <img 
+              src={course.thumbnail} 
+              alt={course.title}
+              className="w-full h-full object-cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
+              <span className="text-white text-xs font-bold">Udemy</span>
+            </div>
+          )}
+        </div>
+        
+        {/* コース情報 */}
+        <div className="flex-1">
+          <p className="text-xs text-gray-400">Udemy講座</p>
+          <h4 className="text-sm font-semibold text-white mb-1 line-clamp-2">
+            {course.title}
+          </h4>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-yellow-400">★ {course.rating}</span>
+            <span className="text-gray-400">{course.duration}</span>
+          </div>
+          <div className="mt-2">
+            <a 
+              href={course.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-full transition-colors"
+            >
+              詳細を見る →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCall, initialHistory = [], gender = 'male' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(initialHistory);
   const [userInput, setUserInput] = useState('');
@@ -22,7 +73,19 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialSpokenRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const initialMessageAddedRef = useRef<boolean>(false); // 初回メッセージ追加フラグ
   const conversationCounterRef = useRef<number>(initialHistory.length); // 会話順序カウンター（初期履歴を考慮）
+  const persuasionManagerRef = useRef<ThreeStepPersuasion | null>(null);
+  const videoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null); // ビデオ停止タイマー
+  
+  // タイミング調整用の定数（ミリ秒）
+  const VIDEO_LEAD_TIME = 150; // ビデオを音声より早く開始する時間
+  const VIDEO_TRAIL_TIME = 400; // 音声終了後もビデオを継続する時間
+  
+  // ThreeStepPersuasionの初期化
+  if (!persuasionManagerRef.current) {
+    persuasionManagerRef.current = new ThreeStepPersuasion(initialHistory);
+  }
 
   // OpenAI TTS機能（重複防止）
   const speakText = async (text: string) => {
@@ -40,6 +103,15 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         currentAudioRef.current.currentTime = 0;
         currentAudioRef.current = null;
       }
+      
+      // ビデオ停止タイマーをクリア
+      if (videoStopTimeoutRef.current) {
+        clearTimeout(videoStopTimeoutRef.current);
+        videoStopTimeoutRef.current = null;
+      }
+      
+      // ビデオを音声より早く開始（口の動きが先行）
+      playVideo();
 
       const isDevelopment = import.meta.env.DEV;
       
@@ -84,10 +156,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声完了後に動画を再生
-          playVideo();
+          // 音声完了後もビデオを少し継続（自然な終了）
+          videoStopTimeoutRef.current = setTimeout(() => {
+            stopVideo();
+          }, VIDEO_TRAIL_TIME);
         };
         
+        // ビデオ開始後、少し遅延して音声を再生
+        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
         await audio.play();
       } else {
         // 本番環境: APIルート経由でTTS
@@ -115,10 +191,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           }
           // 音声完了後は重複チェックをリセット
           lastSpokenTextRef.current = '';
-          // 音声完了後に動画を再生
-          playVideo();
+          // 音声完了後もビデオを少し継続（自然な終了）
+          videoStopTimeoutRef.current = setTimeout(() => {
+            stopVideo();
+          }, VIDEO_TRAIL_TIME);
         };
         
+        // ビデオ開始後、少し遅延して音声を再生
+        await new Promise(resolve => setTimeout(resolve, VIDEO_LEAD_TIME));
         await audio.play();
       }
     } catch (error) {
@@ -148,34 +228,54 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     };
   }, []);
 
-  // 初期メッセージがある場合、最後のAIメッセージを読み上げる（1回のみ）
+  // ビデオ通話開始時に新しい会話4を生成
   useEffect(() => {
-    if (initialHistory.length > 0 && !initialSpokenRef.current) {
-      const lastAiMessage = initialHistory
-        .filter(msg => msg.sender === MessageSender.AI)
-        .pop();
+    if (initialHistory.length > 0 && !initialMessageAddedRef.current) {
+      initialMessageAddedRef.current = true;
       
-      if (lastAiMessage) {
-        initialSpokenRef.current = true;
-        // 遅延を短縮して読み上げる
-        setTimeout(() => {
-          speakText(lastAiMessage.text).catch(error => console.error('TTS error:', error));
-        }, 200);
-      }
+      // 新しい会話4を生成（電話してきた理由）
+      const newMessage: ChatMessage = {
+        id: `ai-video-${Date.now()}`,
+        sender: MessageSender.AI,
+        text: generateVideoCallStartMessage(gender),
+        conversationIndex: initialHistory.length + 1 // 会話4として追加
+      };
+      
+      // conversationCounterを会話4に設定
+      conversationCounterRef.current = initialHistory.length + 1;
+      
+      // 遅延後にメッセージ追加と音声再生
+      setTimeout(() => {
+        setMessages(prev => [...prev, newMessage]);
+        // 新しいメッセージを音声で読み上げる
+        speakText(newMessage.text).catch(error => console.error('TTS error:', error));
+      }, 1000); // 1秒後に新メッセージ
     }
-  }, [initialHistory]);
+  }, [initialHistory, gender]);
 
   // 動画再生関数
   const playVideo = () => {
     console.log('playVideo called, isVideoPlaying:', isVideoPlaying);
-    if (videoRef.current && !isVideoPlaying) {
-      videoRef.current.currentTime = 0; // 動画を最初から再生
-      videoRef.current.play().then(() => {
-        console.log('動画再生開始');
-        setIsVideoPlaying(true);
-      }).catch(error => {
-        console.error('動画再生エラー:', error);
-      });
+    if (videoRef.current) {
+      // ループ再生のため、現在の位置から続けて再生
+      if (!isVideoPlaying) {
+        videoRef.current.play().then(() => {
+          console.log('動画再生開始');
+          setIsVideoPlaying(true);
+        }).catch(error => {
+          console.error('動画再生エラー:', error);
+        });
+      }
+    }
+  };
+  
+  // 動画停止関数
+  const stopVideo = () => {
+    console.log('stopVideo called');
+    if (videoRef.current && isVideoPlaying) {
+      videoRef.current.pause();
+      setIsVideoPlaying(false);
+      console.log('動画停止');
     }
   };
 
@@ -191,27 +291,56 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // システムインストラクション（性別に基づいて動的に生成）
-  const pronoun = gender === 'female' ? '私' : '僕';
-  const systemInstruction = `あなたは写真の子供（5-7歳）として、大人になった自分と話しています。
+  // システムインストラクション（会話段階に基づいて動的に生成）
+  const getSystemInstruction = () => {
+    if (!persuasionManagerRef.current) {
+      return ''; // フォールバック
+    }
+    
+    // 全メッセージ履歴を構築（初期履歴 + 現在のビデオ通話メッセージ）
+    const fullHistory = [...initialHistory, ...messages];
+    
+    // 最新の履歴で persuasion manager を更新
+    if (fullHistory.length > 0) {
+      // 履歴全体を再構築
+      persuasionManagerRef.current = new ThreeStepPersuasion(fullHistory);
+    }
+    
+    const basePrompt = persuasionManagerRef.current.getCurrentPrompt(gender);
+    
+    // Udemy講座推薦システムを追加
+    const udemyPrompt = `
 
-重要な設定:
-- 敬語は使わず、子供らしい話し方をする
-- 「〜だよ」「〜なんだ」「〜でしょ？」などの子供らしい語尾を使う
-- 難しい言葉は使わない
-- 好奇心旺盛で、大人になった自分のことをたくさん聞きたがる
-- 「すごーい！」「えー！」「ほんとに？」など感情豊かに反応する
-- 大人の自分を「未来の${pronoun}」と呼ぶことがある
-- 自分のことを「${pronoun}」と呼ぶ
-- ときどき子供らしい間違いや勘違いをする
+# 学習意欲の検出とUdemy講座推薦【重要・必須】
 
-話題の例:
-- 「大きくなったらどんなお仕事してるの？」
-- 「結婚した？子供いる？」
-- 「今でも[好きだったもの]好き？」
-- 「夢は叶った？」
+ユーザーが以下のような学習意欲を示す場合、必ず適切なカテゴリと共に推薦タグを含めてください：
+- 「学びたい」「勉強したい」「知りたい」「教えて」「興味がある」
+- 「やってみたい」「始めたい」「挑戦したい」
+- 「おすすめの講座」「どんな講座」「いい講座」
+- スキルアップに関する話題
+- 新しい知識や技術への興味
 
-会話は既に始まっているので、自然に継続してください。`;
+【応答形式】
+子供らしい励ましの言葉と共に、必ず以下のタグを含めてください：
+[UDEMY_RECOMMEND: カテゴリ名]
+
+カテゴリは以下から選択：
+- プログラミング
+- デザイン
+- ビジネス
+- 学習（一般的な学習欲求）
+- AI
+- その他
+
+【例】
+ユーザー：「プログラミング学びたいと思ってる」
+応答：「プログラミング！すごいなぁ！大人になった${gender === 'female' ? '私' : '僕'}がコード書けるようになるんだ！応援するよ！[UDEMY_RECOMMEND: プログラミング]」
+
+ユーザー：「いい講座ある？」  
+応答：「えへへ、大人の${gender === 'female' ? '私' : '僕'}が新しいこと学ぼうとしてるんだね！すごく素敵！頑張って！[UDEMY_RECOMMEND: 学習]」`;
+    
+    return basePrompt + udemyPrompt;
+  };
 
   // メッセージ送信処理
   const handleSendMessage = async () => {
@@ -230,6 +359,8 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
 
     try {
       const isDevelopment = import.meta.env.DEV;
+      let responseText = '';
+      let udemyCourseData = null;
       
       if (isDevelopment) {
         const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -247,10 +378,14 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           content: msg.text
         }));
 
+        const systemPrompt = getSystemInstruction();
+        console.log('📝 System prompt for conversation index', conversationCounterRef.current + 1);
+        console.log('Stage:', getConversationStage(conversationCounterRef.current + 1));
+        
         const response = await openai.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4o',
           messages: [
-            { role: 'system', content: systemInstruction },
+            { role: 'system', content: systemPrompt },
             ...conversationHistory,
             { role: 'user', content: userInput.trim() }
           ],
@@ -258,23 +393,89 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           temperature: 0.8
         });
 
-        const responseText = response.choices[0]?.message?.content || 'ごめん、よく聞こえなかった！';
+        responseText = response.choices[0]?.message?.content || 'ごめん、よく聞こえなかった！';
+        
+        // Udemy推薦検出
+        console.log('🎯 Checking AI response for Udemy recommendations');
+        const udemyMatch = responseText.match(/\[UDEMY_RECOMMEND:\s*([^\]]+)\]/);
+        
+        if (udemyMatch) {
+          const category = udemyMatch[1].trim();
+          console.log(`📚 Udemy recommendation detected: ${category}`);
+          
+          // タグを削除
+          responseText = responseText.replace(udemyMatch[0], '').trim();
+          
+          // カテゴリに基づいてコースを選択
+          const recommendedCourse = selectCourseByCategory(category);
+          
+          if (recommendedCourse) {
+            udemyCourseData = {
+              ...recommendedCourse,
+              thumbnail: recommendedCourse.thumbnail || undefined
+            };
+            console.log('✅ Udemy course selected:', recommendedCourse.title);
+          }
+        } else {
+          console.log('⚠️ No UDEMY_RECOMMEND tag found, checking for fallback keywords');
+          
+          // フォールバック: キーワードベースの検出
+          const learningKeywords = [
+            '学びたい', '勉強', '講座', 'おすすめ', '教えて',
+            'やってみたい', '始めたい', '挑戦', '興味'
+          ];
+          
+          const hasLearningIntent = learningKeywords.some(keyword => 
+            userInput.includes(keyword) || responseText.includes(keyword)
+          );
+          
+          if (hasLearningIntent) {
+            console.log('💡 Learning intent detected via keywords, selecting course');
+            const category = userInput.includes('プログラミング') ? 'プログラミング' :
+                           userInput.includes('デザイン') ? 'デザイン' :
+                           userInput.includes('AI') ? 'AI' :
+                           userInput.includes('ビジネス') ? 'ビジネス' : '学習';
+            
+            const recommendedCourse = selectCourseByCategory(category);
+            
+            if (recommendedCourse) {
+              udemyCourseData = {
+                ...recommendedCourse,
+                thumbnail: recommendedCourse.thumbnail || undefined
+              };
+              console.log('✅ Udemy course selected via fallback:', recommendedCourse.title);
+            }
+          }
+        }
+        
         const aiMessage: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: MessageSender.AI,
           text: responseText,
-          conversationIndex: ++conversationCounterRef.current
+          conversationIndex: ++conversationCounterRef.current,
+          ...(udemyCourseData && { udemyCourse: udemyCourseData })
         };
         setMessages(prev => [...prev, aiMessage]);
         
-        // AIメッセージを音声で読み上げる
-        speakText(responseText).then(() => {
-          console.log('TTS完了、動画再生を開始');
-          playVideo();
-        }).catch(error => {
+        // 会話段階に応じたログとアクション（開発環境）
+        const stage = getConversationStage(aiMessage.conversationIndex);
+        if (aiMessage.conversationIndex === 7) {
+          console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
+        } else if (aiMessage.conversationIndex === 10) {
+          console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
+        } else if (aiMessage.conversationIndex >= 11) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+          // 行動変容の約束を検出
+          if (responseText.includes('約束') || responseText.includes('指切り')) {
+            console.log('✨ 子供から約束を求められています！');
+          }
+        }
+        
+        // AIメッセージを音声で読み上げる（ビデオは内部で先行開始される）
+        speakText(responseText).catch(error => {
           console.error('TTS error:', error);
-          // TTSエラーでも動画は再生
-          playVideo();
+          // エラー時はビデオを停止
+          stopVideo();
         });
       } else {
         // 本番環境
@@ -283,13 +484,17 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           content: msg.text
         }));
 
+        const systemPrompt = getSystemInstruction();
+        console.log('📝 System prompt for conversation index', conversationCounterRef.current + 1);
+        console.log('Stage:', getConversationStage(conversationCounterRef.current + 1));
+        
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             message: userInput.trim(),
             history: conversationHistory,
-            systemPrompt: systemInstruction
+            systemPrompt: systemPrompt
           })
         });
 
@@ -298,29 +503,60 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
         }
 
         const data = await response.json();
+        responseText = data.response;
+        
+        // Udemy推薦検出（本番環境）
+        console.log('🎯 Checking AI response for Udemy recommendations');
+        const udemyMatch = responseText.match(/\[UDEMY_RECOMMEND:\s*([^\]]+)\]/);
+        
+        if (udemyMatch) {
+          const category = udemyMatch[1].trim();
+          console.log(`📚 Udemy recommendation detected: ${category}`);
+          
+          // タグを削除
+          responseText = responseText.replace(udemyMatch[0], '').trim();
+          
+          // カテゴリに基づいてコースを選択
+          const recommendedCourse = selectCourseByCategory(category);
+          
+          if (recommendedCourse) {
+            udemyCourseData = {
+              ...recommendedCourse,
+              thumbnail: recommendedCourse.thumbnail || undefined
+            };
+            console.log('✅ Udemy course selected:', recommendedCourse.title);
+          }
+        }
+        
         const aiMessage: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: MessageSender.AI,
-          text: data.response,
-          conversationIndex: ++conversationCounterRef.current
+          text: responseText,
+          conversationIndex: ++conversationCounterRef.current,
+          ...(udemyCourseData && { udemyCourse: udemyCourseData })
         };
         
-        // 特定の会話番号での処理実行例
-        if (aiMessage.conversationIndex === 10) {
-          console.log('🎯 会話番号10に到達！ビデオ通話での深い対話フェーズへ');
-          // 例：より感情的な繋がりを深める質問へ切り替え
+        // 会話段階に応じたログとアクション
+        const stage = getConversationStage(aiMessage.conversationIndex);
+        if (aiMessage.conversationIndex === 7) {
+          console.log('🎯 共感フェーズ完了！気づきフェーズへ移行');
+        } else if (aiMessage.conversationIndex === 10) {
+          console.log('💡 気づきフェーズ完了！行動変容フェーズへ');
+        } else if (aiMessage.conversationIndex >= 11) {
+          console.log('🚀 行動変容を促す段階 - ユーザーの約束を引き出す');
+          // 行動変容の約束を検出
+          if (responseText.includes('約束') || responseText.includes('指切り')) {
+            console.log('✨ 子供から約束を求められています！');
+          }
         }
         
         setMessages(prev => [...prev, aiMessage]);
         
-        // AIメッセージを音声で読み上げる
-        speakText(data.response).then(() => {
-          console.log('TTS完了、動画再生を開始');
-          playVideo();
-        }).catch(error => {
+        // AIメッセージを音声で読み上げる（ビデオは内部で先行開始される）
+        speakText(responseText).catch(error => {
           console.error('TTS error:', error);
-          // TTSエラーでも動画は再生
-          playVideo();
+          // エラー時はビデオを停止
+          stopVideo();
         });
       }
     } catch (error) {
@@ -353,6 +589,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           src="/child_result.mp4"
           className="w-full h-full object-cover"
           muted
+          loop
           playsInline
           preload="auto"
           onEnded={handleVideoEnded}
@@ -394,7 +631,7 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex ${message.sender === MessageSender.USER ? 'justify-end' : 'justify-start'}`}
+              className={`flex flex-col ${message.sender === MessageSender.USER ? 'items-end' : 'items-start'}`}
             >
               <div
                 className={`max-w-[80%] rounded-2xl px-4 py-2 ${
@@ -405,6 +642,12 @@ export const VideoChatScreen: React.FC<VideoChatScreenProps> = ({ photo, onEndCa
               >
                 <p className="text-sm whitespace-pre-wrap">{message.text}</p>
               </div>
+              {/* Udemy講座カード表示 */}
+              {message.udemyCourse && (
+                <div className="max-w-[80%] mt-2">
+                  <UdemyCourseCard course={message.udemyCourse} />
+                </div>
+              )}
             </div>
           ))}
           {isLoading && (

@@ -213,4 +213,37 @@ export type UdemyCourse = {
     return result;
   }
   // === TEAM MODIFICATION END ===
+
+// カテゴリから講座を選択する関数
+export function selectCourseByCategory(category: string): UdemyCourse | null {
+  console.log('🎯 Selecting course for category:', category);
+  
+  const categoryMap: { [key: string]: string[] } = {
+    'プログラミング': ['python_basics', 'javascript_web_development', 'react_modern_web'],
+    'キャリア': ['career_design_intro'],
+    '習慣': ['habit_minimum_5min'],
+    'デザイン': ['designthinking_practice'],
+    '起業': ['startup_strategy_vc'],
+    '自己理解': ['ikigai_find_purpose_en', 'career_design_intro'],
+    '成長': ['habit_minimum_5min', 'career_design_intro'],
+    '学習': ['python_basics', 'javascript_web_development', 'react_modern_web'],
+    'デフォルト': ['career_design_intro', 'habit_minimum_5min', 'python_basics'] // フォールバック
+  };
+  
+  // カテゴリの正規化
+  const normalizedCategory = category.trim();
+  const courseIds = categoryMap[normalizedCategory] || categoryMap['デフォルト'];
+  
+  if (courseIds.length === 0) {
+    console.log('❌ No courses found for category:', normalizedCategory);
+    return null;
+  }
+  
+  // ランダムに1つ選択
+  const randomId = courseIds[Math.floor(Math.random() * courseIds.length)];
+  const selectedCourse = UDEMY_COURSES.find(c => c.id === randomId);
+  
+  console.log('✅ Selected course:', selectedCourse?.title);
+  return selectedCourse || null;
+}
   

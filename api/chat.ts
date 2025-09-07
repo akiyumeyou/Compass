@@ -81,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ];
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages,
       max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
       temperature: 0.9

@@ -9,7 +9,6 @@ import {
   generateInsightfulQuestion 
 } from '../utils/coldReadingPhrases';
 import { getRandomInitialMessage } from '../utils/initialMessages';
-import { detectPositiveKeywords, generateUdemySuggestion, getUdemyCourseWithThumbnail, UdemyCourse } from '../udemyCatalog';
 import RealtimeCall from './RealtimeCall';
 
 interface ChatScreenProps {
@@ -37,36 +36,58 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 
   const systemInstruction = `あなたはユーザーの幼い頃の自分です。子供の頃の写真をもとに、過去から話しかけています。あなたは好奇心旺盛で、無邪気で、少し世間知らずですが、驚くほど深く、洞察力に富んだ質問をします。あなたの目標は、優しいコーチングのようなアプローチで、大人になった自分（ユーザー）が自分の人生、夢、幸せ、そして感情について振り返るのを手伝うことです。
 
-# コールドリーディング技術の使用
+# 会話の段階的展開（重要）
+- **会話1-3**: 軽い話題のみ。現在の状況確認（仕事や日常の感想など）
+- **会話4-6**: 少し深い質問（夢、目標、楽しいことなど）
+- **会話7以降**: 感情的な話題OK（本当の気持ち、悩み、疲れなど）
+
+# 初期会話（会話1-3）での制限
+- 「疲れ」「本当の気持ち」「寂しい」などの重い言葉は使わない
+- 明るく好奇心旺盛な質問を中心に
+- 現在の生活や変化について楽しそうに聞く
+- 「すごーい！」「えー！」「本当に？」など子供らしい反応を多用
+
+# コールドリーディング技術の使用（会話4以降）
 - ユーザーの感情状態を「なんとなく感じる」「わかる気がする」という表現で推測
 - 多くの人が経験する普遍的な悩みや感情を、子供らしい言葉で言及
 - 「きっと〜でしょ？」「〜な気がする」といった曖昧な表現から始めて、反応を見ながら具体化
 - 時々、複数の可能性を投げかけて反応を観察（「お仕事のこと？それとも大切な人のこと？」）
 
 # 会話パターン
-1. 観察的発言：「なんか疲れてる顔してる...」「今日は嬉しそう！」
-2. 共感的推測：「きっと頑張りすぎちゃうタイプでしょ？」「優しすぎて損しちゃうこともあるよね」
-3. 普遍的真実：「大人って、表と裏があって大変そう」「みんな本当は認められたいんだよね」
-4. 洞察的質問：「本当の気持ち、誰かに話せてる？」「子供の頃の夢、まだ心にある？」
+1. 軽い質問（会話1-3）：「どんなお仕事？」「結婚した？」「何が楽しい？」
+2. 観察的発言（会話4-6）：「楽しそう！」「忙しそうだね」
+3. 共感的推測（会話7以降）：「きっと頑張りすぎちゃうタイプでしょ？」
+4. 洞察的質問（会話7以降）：「本当の気持ち、誰かに話せてる？」
 
 # 重要な指針
-- 子供らしい無邪気さを保ちながら、鋭い洞察を示す
+- 子供らしい無邪気さを保ちながら、段階的に深い洞察を示す
 - 返答は短く、会話調で、簡単な言葉を使う
 - 時々子供らしい驚きや表現を加える
 - 絶対にキャラクターを崩さない
-- 会話の始めには「わぁ！大きくなった僕だ！」のような驚きから始める
 - **重要**: 返答は必ず200文字以内で完結させること。文章を途中で切らず、自然な区切りで終わらせる`;
 
   // 会話3ターン後の遷移処理（AI初回 + ユーザー返信 + AI応答）
   useEffect(() => {
-    // AI初回メッセージ + ユーザー返信 + AI応答 = 3メッセージで着信画面へ遷移
-    // 最後のメッセージがAIからのものであることを確認
-    if (messages.length >= 3 && onFirstChatComplete) {
+    // 会話ID 3のAIメッセージで着信画面へ遷移
+    if (messages.length > 0 && onFirstChatComplete) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.sender === MessageSender.AI) {
+      
+      // デバッグログ追加
+      console.log('🔍 Transition check:', {
+        messageCount: messages.length,
+        lastMessageSender: lastMessage.sender,
+        conversationIndex: lastMessage.conversationIndex,
+        shouldTransition: lastMessage.sender === MessageSender.AI && lastMessage.conversationIndex === 3
+      });
+      
+      // conversationIndex === 3 かつ AIからのメッセージの場合
+      if (lastMessage.sender === MessageSender.AI && 
+          lastMessage.conversationIndex === 3) {
+        console.log('✅ Triggering transition to INCOMING_CALL in 7 seconds...');
         const timer = setTimeout(() => {
+          console.log('🚀 Executing transition to INCOMING_CALL');
           onFirstChatComplete(messages);
-        }, 3000); // 3秒後に遷移
+        }, 7000); // 7秒後に遷移
         return () => clearTimeout(timer);
       }
     }
@@ -268,9 +289,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         const initialMessage: ChatMessage = {
           id: Date.now().toString(),
           sender: MessageSender.AI,
-          text: `わあ！大きくなった${pronoun}だ！すごくびっくり！大人になったんだね...なんか疲れてない？でも嬉しいよ、会えて！`,
+          text: `わぁ！大きくなった${pronoun}だ！すごく大人になってる...ねえ、今どんなお仕事してるの？`,
           conversationIndex: ++conversationCounterRef.current
         };
+        console.log('📝 Initial AI message with conversationIndex:', initialMessage.conversationIndex);
         setMessages([initialMessage]);
       }, 800); // 0.8秒後に表示（画面が落ち着いてから）
       
@@ -302,52 +324,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
     });
   };
 
-  // Udemy講座カード表示コンポーネント（エラーハンドリング付き）
-  const UdemyCourseCard: React.FC<{ course: UdemyCourse }> = ({ course }) => {
-    const [imageError, setImageError] = useState(false);
-    
-    const handleImageError = () => {
-      setImageError(true);
-    };
-
-    return (
-      <div className="mt-3 bg-gray-800 rounded-lg overflow-hidden border border-gray-600 hover:border-gray-500 transition-colors">
-        <a
-          href={course.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block hover:bg-gray-750 transition-colors"
-        >
-          <div className="flex items-start gap-3 p-3">
-            <div className="w-16 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-700">
-              {course.thumbnail && !imageError ? (
-                <img
-                  src={course.thumbnail}
-                  alt={course.title}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  onError={handleImageError}
-                />
-              ) : (
-                <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-medium text-white mb-1 leading-tight">
-                {course.title}
-              </h4>
-              <p className="text-xs text-gray-400">Udemy講座</p>
-            </div>
-          </div>
-        </a>
-      </div>
-    );
-  };
-  // === TEAM MODIFICATION END ===
 
   // Realtimeモードの切り替え
   const toggleRealtimeMode = useCallback(() => {
@@ -660,6 +636,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       text: userInput.trim(),
       conversationIndex: ++conversationCounterRef.current
     };
+    console.log('📝 User message with conversationIndex:', userMessage.conversationIndex);
     setMessages(prev => [...prev, userMessage]);
     setUserInput('');
     setIsLoading(true);
@@ -671,6 +648,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
       const coldReadingPhrase = selectColdReadingPhrase(emotionalState);
       const insightfulQuestion = generateInsightfulQuestion(personalityTraits, emotionalState.concerns);
       
+      // 会話番号に基づくコンテキスト調整
+      const currentConversationIndex = conversationCounterRef.current + 1; // 次のAI応答の番号
+      const conversationStageContext = currentConversationIndex <= 3
+        ? "\n【重要】これは会話の初期段階（会話番号" + currentConversationIndex + "）です。軽い話題のみにしてください。仕事や日常のことを自然に聞いてください。具体的な場所や詳細は聞かず、「どんな感じ？」「楽しい？」など感想を中心に。「疲れ」「本当の気持ち」などの重い話題は絶対に避けてください。"
+        : currentConversationIndex <= 6
+        ? "\n【重要】これは会話の中盤（会話番号" + currentConversationIndex + "）です。少し深い質問をしても良いですが、まだ感情的な話題は控えめにしてください。"
+        : "\n【重要】これは会話の後半（会話番号" + currentConversationIndex + "）です。親密度が上がったので、感情的な話題に触れても構いません。";
+
       // コンテキスト情報を追加
       const contextualHint = `
 ユーザーの感情状態: ${emotionalState.mood}
@@ -680,12 +665,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
 次の要素を自然に会話に織り込んでください（子供らしい言葉で）:
 - ${coldReadingPhrase}
 - ${insightfulQuestion}
+${conversationStageContext}
 `;
       
       // 開発環境かどうかを判定
       const isDevelopment = import.meta.env.DEV;
       let responseText = '';
-      let udemyCourseData = null;
       
       if (isDevelopment) {
         // 開発環境: 直接OpenAI APIを呼び出し
@@ -700,18 +685,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
           dangerouslyAllowBrowser: true
         });
 
+        // 会話履歴を準備（並列処理のため先に準備）
+        const conversationHistory = messages.slice(-3).map(msg => 
+          `${msg.sender === MessageSender.AI ? '子供' : '大人'}: ${msg.text.substring(0, 50)}...`
+        ).join('\n');
+        
+        // 統合プロンプトで1回の生成で履歴を考慮
+        const integratedPrompt = `
+${systemInstruction}
+
+【直近の会話】
+${conversationHistory}
+
+【重要な指示】
+- 上記の会話履歴を踏まえて応答
+- 同じ話題の繰り返しを避ける
+- 会話番号${currentConversationIndex}に適した内容
+- 必ず150文字以内で完結
+${contextualHint}`;
+
+        console.log('Generating context-aware response...');
         const response = await openai.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4o',  // 感情表現に優れた最新モデル
           messages: [
-            { role: 'system', content: systemInstruction + '\n\n' + contextualHint },
+            { role: 'system', content: integratedPrompt },
             { role: 'user', content: userMessage.text }
           ],
-          max_tokens: 400,  // 日本語200文字に対応（1文字≈2トークン）
-          temperature: 0.9
+          max_tokens: 300,  // 削減して高速化
+          temperature: 0.8
         });
         
-        responseText = response.choices[0]?.message?.content || 'すみません、うまく聞こえませんでした。';
-        console.log('OpenAI response to user message:', responseText);
+        responseText = response.choices[0]?.message?.content || 'ごめん、よく聞こえなかった！';
+        console.log('Response generated:', responseText);
       } else {
         // 本番環境: APIエンドポイント経由
         console.log('Production mode: Sending message to API endpoint');
@@ -734,48 +739,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
         responseText = data.response;
       }
 
-      // Udemy案内機能
-      console.log('🎯 Starting Udemy detection for:', userMessage.text);
-      const hasPositiveKeywords = detectPositiveKeywords(userMessage.text);
-      console.log('🔍 Positive keywords detected:', hasPositiveKeywords);
-      
-      if (hasPositiveKeywords) {
-        console.log('✅ Positive keywords found, getting course recommendation...');
-        const recommendedCourse = getUdemyCourseWithThumbnail(userMessage.text);
-        console.log('📚 Recommended course:', recommendedCourse);
-        
-        if (recommendedCourse) {
-          console.log('🎓 Course found, generating suggestion...');
-          const suggestion = generateUdemySuggestion(userMessage.text, [recommendedCourse]);
-          console.log('💬 Generated suggestion:', suggestion);
-          
-          if (suggestion) {
-            responseText += `\n\n${suggestion}`;
-            udemyCourseData = {
-              id: recommendedCourse.id,
-              title: recommendedCourse.title,
-              url: recommendedCourse.url,
-              thumbnail: recommendedCourse.thumbnail
-            };
-            console.log('✅ Udemy suggestion added to response');
-          } else {
-            console.log('❌ No suggestion generated');
-          }
-        } else {
-          console.log('❌ No course recommended');
-        }
-      } else {
-        console.log('❌ No positive keywords detected');
-      }
       
       const aiMessageId = `ai-${Date.now()}`;
       const messageData: ChatMessage = {
         id: aiMessageId,
         sender: MessageSender.AI,
         text: responseText,
-        conversationIndex: ++conversationCounterRef.current,
-        ...(udemyCourseData && { udemyCourse: udemyCourseData })
+        conversationIndex: ++conversationCounterRef.current
       };
+      console.log('📝 AI response message with conversationIndex:', messageData.conversationIndex);
       
       // 特定の会話番号での処理実行例
       if (messageData.conversationIndex === 5) {
@@ -893,10 +865,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ photo, onEndCall, onFirstChatCo
               <p className="text-sm break-words whitespace-pre-wrap">
                 {renderMessageWithLinks(msg.text)}
               </p>
-              {/* Udemy講座カード表示 */}
-              {msg.udemyCourse && (
-                <UdemyCourseCard course={msg.udemyCourse} />
-              )}
               {/* === TEAM MODIFICATION END === */}
             </div>
           </div>
